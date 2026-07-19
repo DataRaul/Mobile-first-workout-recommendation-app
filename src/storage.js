@@ -1,101 +1,72 @@
-import { DEFAULT_GYM, DEFAULT_PROFILE } from "./data.js";
+const KEY = "workout-recommender.state.v2";
 
-const KEYS = {
-  profile: "workout.profile.v1",
-  gym: "workout.gym.kraftwerk.v1",
-  history: "workout.history.v1",
+export const DEFAULT_STATE = {
+  schemaVersion: 2,
+  profile: null,
+  draftProgram: null,
+  activeProgram: null,
+  activeSession: null,
+  history: [],
+  gym: { unavailableExerciseIds: [], unavailableEquipment: [] },
+  preferences: { language: "en" },
 };
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
-function read(key, fallback) {
+function migrateLegacy() {
   try {
-    const raw = localStorage.getItem(key);
-    return raw ? { ...clone(fallback), ...JSON.parse(raw) } : clone(fallback);
-  } catch {
-    return clone(fallback);
-  }
+    const old = JSON.parse(localStorage.getItem("workout.profile.v1") || "null");
+    if (!old) return null;
+    const preset = old.equipmentMode === "machine_only" ? "machines" : "full_gym";
+    return {
+      ...clone(DEFAULT_STATE),
+      profile: {
+        name: old.name || "",
+        goal: "hypertrophy",
+        level: old.level || "starter",
+        daysPerWeek: 3,
+        sessionMinutes: old.sessionMinutes || 45,
+        durationWeeks: 12,
+        equipmentPreset: preset,
+        equipment: [],
+        constraints: old.constraints || [],
+        favorites: old.favorites || [],
+      },
+    };
+  } catch { return null; }
 }
 
-function write(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+export function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (saved?.schemaVersion === 2) return { ...clone(DEFAULT_STATE), ...saved };
+  } catch {}
+  return migrateLegacy() || clone(DEFAULT_STATE);
 }
 
-export function loadProfile() {
-  return read(KEYS.profile, DEFAULT_PROFILE);
+export function saveState(state) {
+  localStorage.setItem(KEY, JSON.stringify(state));
+  return state;
 }
 
-export function saveProfile(profile) {
-  const value = { ...DEFAULT_PROFILE, ...profile, updatedAt: new Date().toISOString() };
-  write(KEYS.profile, value);
-  return value;
+export function exportState(state) {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `workout-recommender-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
-export function loadGym() {
-  return read(KEYS.gym, DEFAULT_GYM);
+export async function importState(file) {
+  const parsed = JSON.parse(await file.text());
+  if (parsed?.schemaVersion !== 2) throw new Error("This is not a Workout Recommender v2 export.");
+  saveState(parsed);
+  return parsed;
 }
 
-export function saveGym(gym) {
-  const value = { ...DEFAULT_GYM, ...gym, updatedAt: new Date().toISOString() };
-  write(KEYS.gym, value);
-  return value;
-}
-
-export function loadHistory() {
-  return read(KEYS.history, { workouts: [], recentExerciseIds: [] });
-}
-
-export function saveWorkout(workout) {
-  const history = loadHistory();
-  const completedIds = workout.exercises.filter(item => item.completed).map(item => item.id);
-  const allIds = workout.exercises.map(item => item.id);
-  const record = {
-    id: crypto.randomUUID?.() ?? String(Date.now()),
-    generatedAt: workout.generatedAt,
-    completedAt: new Date().toISOString(),
-    completedExerciseIds: completedIds,
-    exerciseIds: allIds,
-  };
-  const next = {
-    workouts: [record, ...history.workouts].slice(0, 30),
-    recentExerciseIds: [...allIds, ...history.recentExerciseIds]
-      .filter((id, index, array) => array.indexOf(id) === index)
-      .slice(0, 18),
-  };
-  write(KEYS.history, next);
-  return next;
-}
-
-export function exportData() {
-  return {
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
-    app: "Mobile-first-workout-recommendation-app",
-    profile: loadProfile(),
-    gym: loadGym(),
-    history: loadHistory(),
-  };
-}
-
-export function importData(payload) {
-  if (!payload || payload.schemaVersion !== 1 || typeof payload !== "object") {
-    throw new Error("Unsupported or invalid export file.");
-  }
-
-  if (payload.profile) saveProfile(payload.profile);
-  if (payload.gym) saveGym(payload.gym);
-  if (payload.history && Array.isArray(payload.history.workouts)) {
-    write(KEYS.history, payload.history);
-  }
-
-  return exportData();
-}
-
-export function resetGym() {
-  localStorage.removeItem(KEYS.gym);
-  return loadGym();
-}
-
-export function resetAll() {
-  Object.values(KEYS).forEach(key => localStorage.removeItem(key));
+export function resetState() {
+  localStorage.removeItem(KEY);
+  return clone(DEFAULT_STATE);
 }
