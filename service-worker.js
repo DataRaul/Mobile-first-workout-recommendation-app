@@ -1,4 +1,4 @@
-const CACHE = "workout-recommender-v2.7-reinforced-programming-20260719";
+const CACHE = "workout-recommender-v3.0-enriched-20260720";
 
 const APP = [
   "./",
@@ -10,6 +10,10 @@ const APP = [
   "./src/dataset.js",
   "./src/programme.js",
   "./src/app.js",
+  "./data/exercise-enrichment.json",
+  "./data/exercise-overrides.json",
+  "./data/programming-targets.json",
+  "./data/enrichment-metadata.json",
 ];
 
 self.addEventListener("install", (event) => {
