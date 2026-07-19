@@ -1,77 +1,299 @@
-# Workout Recommender
+import { EQUIPMENT_PRESETS, GOALS } from "./config.js";
 
-A personal, non-commercial mobile-first workout programme recommender and tracker.
+const SPLITS = {
+  2: [
+    { name: "Full Body A", slots: ["quads", "chest", "back", "hamstrings", "shoulders", "core"] },
+    { name: "Full Body B", slots: ["glutes", "back", "chest", "quads", "arms", "core"] },
+  ],
+  3: [
+    { name: "Full Body A", slots: ["quads", "chest", "back", "hamstrings", "shoulders", "core"] },
+    { name: "Full Body B", slots: ["glutes", "back", "chest", "quads", "biceps", "triceps"] },
+    { name: "Full Body C", slots: ["hamstrings", "shoulders", "back", "chest", "calves", "core"] },
+  ],
+  4: [
+    { name: "Upper A", slots: ["chest", "back", "shoulders", "biceps", "triceps", "core"] },
+    { name: "Lower A", slots: ["quads", "hamstrings", "glutes", "calves", "core", "adductors"] },
+    { name: "Upper B", slots: ["back", "chest", "shoulders", "triceps", "biceps", "forearms"] },
+    { name: "Lower B", slots: ["glutes", "quads", "hamstrings", "calves", "core", "abductors"] },
+  ],
+  5: [
+    { name: "Push", slots: ["chest", "shoulders", "triceps", "chest", "shoulders", "core"] },
+    { name: "Pull", slots: ["back", "back", "biceps", "shoulders", "forearms", "core"] },
+    { name: "Legs", slots: ["quads", "hamstrings", "glutes", "calves", "adductors", "core"] },
+    { name: "Upper", slots: ["chest", "back", "shoulders", "biceps", "triceps", "core"] },
+    { name: "Lower", slots: ["glutes", "quads", "hamstrings", "calves", "abductors", "core"] },
+  ],
+  6: [
+    { name: "Push A", slots: ["chest", "shoulders", "triceps", "chest", "shoulders", "core"] },
+    { name: "Pull A", slots: ["back", "back", "biceps", "shoulders", "forearms", "core"] },
+    { name: "Legs A", slots: ["quads", "hamstrings", "glutes", "calves", "adductors", "core"] },
+    { name: "Push B", slots: ["shoulders", "chest", "triceps", "chest", "shoulders", "core"] },
+    { name: "Pull B", slots: ["back", "biceps", "back", "shoulders", "forearms", "core"] },
+    { name: "Legs B", slots: ["glutes", "quads", "hamstrings", "calves", "abductors", "core"] },
+  ],
+};
 
-This version replaces the original one-off hypertrophy generator with a complete product flow:
+function hashString(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
 
-1. onboarding;
-2. multi-week programme recommendation;
-3. programme review and acceptance;
-4. persistent routine;
-5. guided daily workouts;
-6. set, weight, repetition and RIR tracking;
-7. temporary and permanent exercise substitutions;
-8. progression and workout history;
-9. a searchable library containing all 1,324 source exercises.
+function rng(seed) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let value = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-## Live deployment
+export function maxComplexity(level) {
+  return ({ starter: 1, intermediate: 2, advanced: 3, pro: 4 })[level] || 1;
+}
 
-Deploy this static site using **Settings → Pages → Deploy from a branch → main → /(root)**.
+export function allowedEquipment(profile) {
+  if (profile.equipmentPreset === "custom") return new Set(profile.equipment || []);
+  return new Set(
+    EQUIPMENT_PRESETS[profile.equipmentPreset]?.equipment ||
+      EQUIPMENT_PRESETS.full_gym.equipment,
+  );
+}
 
-## Exercise dataset
+export function eligibleForProfile(exercise, profile, state) {
+  const allowed = allowedEquipment(profile);
+  if (!allowed.has(exercise.equipment)) return false;
+  if ((state.gym?.unavailableExerciseIds || []).includes(exercise.id)) return false;
+  if (exercise.app.complexity > maxComplexity(profile.level)) return false;
+  if ((profile.constraints || []).some((constraint) => exercise.app.safetyFlags.includes(constraint))) {
+    return false;
+  }
+  if (profile.goal === "mobility") return exercise.app.goalTags.includes("mobility");
+  if (profile.goal === "conditioning") {
+    return exercise.app.goalTags.includes("conditioning") || exercise.app.goalTags.includes("general");
+  }
+  return !exercise.app.goalTags.includes("mobility");
+}
 
-The app loads the complete dataset at runtime from:
+function groupMatches(exercise, slot) {
+  if (slot === "arms") return ["biceps", "triceps", "forearms", "arms"].includes(exercise.app.group);
+  if (slot === "legs") {
+    return ["quads", "hamstrings", "glutes", "calves", "adductors", "abductors", "legs"].includes(
+      exercise.app.group,
+    );
+  }
+  return exercise.app.group === slot;
+}
 
-`https://github.com/hasaneyldrm/exercises-dataset`
+function goalScore(exercise, goal) {
+  let score = exercise.app.goalTags.includes(goal) ? 6 : 0;
+  if (
+    ["strength", "hypertrophy", "general"].includes(goal) &&
+    ["squat", "hinge", "horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull"].includes(
+      exercise.app.movement,
+    )
+  ) {
+    score += 3;
+  }
+  if (goal === "power" && exercise.app.goalTags.includes("power")) score += 8;
+  if (goal === "conditioning" && ["cardio", "squat", "horizontal_push", "horizontal_pull"].includes(exercise.app.movement)) {
+    score += 3;
+  }
+  if (goal === "endurance" && ["body weight", "band", "cable", "leverage machine"].includes(exercise.equipment)) {
+    score += 2;
+  }
+  return score;
+}
 
-The source dataset remains unchanged. `src/dataset.js` creates an application-side enrichment layer for:
+function chooseExercise(pool, slot, used, profile, random) {
+  const candidates = pool.filter((exercise) => groupMatches(exercise, slot) && !used.has(exercise.id));
+  const fallback = pool.filter((exercise) => !used.has(exercise.id));
+  const ranked = (candidates.length ? candidates : fallback)
+    .map((exercise) => ({
+      exercise,
+      score:
+        goalScore(exercise, profile.goal) +
+        ((profile.favorites || []).includes(exercise.id) ? 4 : 0) +
+        random() * 1.5,
+    }))
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.exercise || null;
+}
 
-- normalized muscle groups;
-- movement patterns;
-- estimated complexity;
-- programme-goal suitability;
-- conservative pain and movement flags.
+function prescription(profile, exercise, index) {
+  const config = GOALS[profile.goal] || GOALS.general;
+  let sets = config.sets;
+  let reps = config.reps;
+  let restSeconds = config.rest;
 
-This means all 1,324 exercises remain visible in **Exercises**, while the programme engine selects only exercises compatible with the active profile.
+  if (
+    profile.goal === "strength" &&
+    !["squat", "hinge", "horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull"].includes(
+      exercise.app.movement,
+    )
+  ) {
+    sets = 3;
+    reps = "6–10";
+    restSeconds = 90;
+  }
+  if (profile.goal === "power" && !exercise.app.goalTags.includes("power")) {
+    sets = 3;
+    reps = "6–10";
+    restSeconds = 90;
+  }
+  if (profile.goal === "mobility") {
+    sets = 2;
+    reps = "30–60 sec";
+    restSeconds = 20;
+  }
 
-The enrichment is heuristic and is not medical advice.
+  return { exerciseId: exercise.id, sets, reps, restSeconds, order: index + 1 };
+}
 
-## Supported programme goals
+function progression(goal) {
+  const common = "Record every set. Keep technique stable and stop a set when form changes or pain appears.";
+  const rules = {
+    strength: "When every work set reaches the top of the range with 2 repetitions in reserve, add a small amount of weight next time.",
+    hypertrophy: "Use double progression: add repetitions inside the range, then add weight after all sets reach the top of the range.",
+    power: "Increase load only while movement speed and technique remain sharp. Do not grind repetitions.",
+    endurance: "First increase completed repetitions or work time, then reduce rest slightly or add a small load.",
+    general: "Add repetitions first, then add a small amount of resistance while keeping 2–3 repetitions in reserve.",
+    conditioning: "Progress by adding a round, extending work intervals, or reducing rest—but change only one variable at a time.",
+    mobility: "Progress range and control gradually; never force a painful end range.",
+  };
+  return `${rules[goal]} ${common}`;
+}
 
-- Strength
-- Hypertrophy
-- Power and athleticism
-- Muscular endurance
-- General fitness
-- Conditioning
-- Mobility and recovery
+export function generateProgram(exercises, profile, state, variation = 0) {
+  const pool = exercises.filter((exercise) => eligibleForProfile(exercise, profile, state));
+  if (pool.length < 20) {
+    throw new Error(
+      "The current equipment and safety filters leave too few exercises. Adjust the profile before building a programme.",
+    );
+  }
 
-## Programme flow
+  const split = SPLITS[Math.min(6, Math.max(2, Number(profile.daysPerWeek) || 3))];
+  const random = rng(hashString(JSON.stringify(profile) + variation));
+  const usedAcross = new Set();
+  const targetCount =
+    profile.sessionMinutes <= 30 ? 5 : profile.sessionMinutes <= 45 ? 6 : profile.sessionMinutes <= 60 ? 7 : 8;
 
-Before acceptance, the user may review or regenerate a complete programme. After **Accept programme**, it becomes a persistent 8–16-week routine. The normal home action then becomes **Start workout** or **Resume workout**, rather than generating a new random session.
+  const workouts = split.map((template, workoutIndex) => {
+    const used = new Set();
+    const slots = [...template.slots];
+    while (slots.length < targetCount) slots.push(slots[slots.length % template.slots.length]);
 
-## Substitution behaviour
+    const chosen = [];
+    for (const slot of slots.slice(0, targetCount)) {
+      let exercise = chooseExercise(pool, slot, used, profile, random);
+      if (!exercise) continue;
+      if (usedAcross.has(exercise.id) && pool.length > targetCount * split.length) {
+        const unusedPool = pool.filter((candidate) => !usedAcross.has(candidate.id));
+        exercise = chooseExercise(unusedPool, slot, used, profile, random) || exercise;
+      }
+      used.add(exercise.id);
+      usedAcross.add(exercise.id);
+      chosen.push(exercise);
+    }
 
-- **Replace for today** changes only the active session.
-- **Replace in routine** updates future instances of that workout template.
-- **Not available at this gym** records the exercise/machine variant as unavailable and permanently replaces it.
+    return {
+      id: `workout-${workoutIndex + 1}`,
+      name: template.name,
+      exercises: chosen.map((exercise, index) => prescription(profile, exercise, index)),
+    };
+  });
 
-## Storage
+  const config = GOALS[profile.goal] || GOALS.general;
+  const durationWeeks = Number(profile.durationWeeks || config.weeks);
+  return {
+    id: `program-${Date.now()}-${variation}`,
+    status: "draft",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    variation,
+    title: `${durationWeeks}-week ${config.label} programme`,
+    goal: profile.goal,
+    durationWeeks,
+    daysPerWeek: Number(profile.daysPerWeek),
+    sessionMinutes: Number(profile.sessionMinutes),
+    splitName:
+      Number(profile.daysPerWeek) === 4
+        ? "Upper / Lower"
+        : Number(profile.daysPerWeek) >= 5
+          ? "Multi-day split"
+          : "Full-body rotation",
+    progression: progression(profile.goal),
+    reviewWeeks: [4, 8, durationWeeks].filter((value, index, values) => value <= durationWeeks && values.indexOf(value) === index),
+    workouts,
+  };
+}
 
-Profiles, programmes, sessions, gym observations and history are stored in browser `localStorage`. The Profile screen supports JSON export/import.
+export function acceptProgram(program) {
+  return {
+    ...program,
+    status: "active",
+    acceptedAt: new Date().toISOString(),
+    startDate: new Date().toISOString().slice(0, 10),
+    completedSessions: 0,
+    nextWorkoutIndex: 0,
+  };
+}
 
-The 1,324-exercise JSON and media are loaded from the source repository and can be cached by the service worker. They are not duplicated in this repository.
+export function currentWeek(program) {
+  return Math.min(program.durationWeeks, Math.floor((program.completedSessions || 0) / program.daysPerWeek) + 1);
+}
 
-## Validation
+export function nextWorkout(program) {
+  return program.workouts[(program.nextWorkoutIndex || 0) % program.workouts.length];
+}
 
-```bash
-npm run validate
-```
+export function replacementOptions(
+  exercises,
+  currentId,
+  existingIds,
+  profile,
+  state,
+  goal,
+  limit = 30,
+) {
+  const current = exercises.find((exercise) => exercise.id === currentId);
+  if (!current) return [];
 
-## Medical disclaimer
+  return exercises
+    .filter(
+      (exercise) =>
+        exercise.id !== currentId &&
+        !existingIds.includes(exercise.id) &&
+        eligibleForProfile(exercise, profile, state),
+    )
+    .filter(
+      (exercise) =>
+        exercise.app.group === current.app.group || exercise.app.movement === current.app.movement,
+    )
+    .map((exercise) => {
+      const sameGroup = exercise.app.group === current.app.group;
+      const sameMovement = exercise.app.movement === current.app.movement;
+      const sameEquipment = exercise.equipment === current.equipment;
+      const complexityDistance = Math.abs(exercise.app.complexity - current.app.complexity);
+      return {
+        exercise,
+        score:
+          (sameGroup ? 7 : 0) +
+          (sameMovement ? 5 : 0) +
+          (sameEquipment ? 1.5 : 0) +
+          goalScore(exercise, goal) -
+          complexityDistance * 0.75,
+      };
+    })
+    .sort((a, b) => b.score - a.score || a.exercise.name.localeCompare(b.exercise.name))
+    .slice(0, limit)
+    .map((item) => item.exercise);
+}
 
-This app is a planning and tracking aid, not medical advice. Automated safety flags are conservative text-based heuristics. They do not establish that an exercise is safe for a specific person. Stop if symptoms increase and follow guidance from a qualified clinician or physiotherapist.
-
-## Licence and use
-
-This project is intended for personal, educational and non-commercial use. See `NOTICE.md` and retain the source dataset/media attribution.
+export function findReplacement(exercises, currentId, existingIds, profile, state, goal) {
+  return replacementOptions(exercises, currentId, existingIds, profile, state, goal, 1)[0] || null;
+}
