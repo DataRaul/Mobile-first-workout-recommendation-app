@@ -1,0 +1,23 @@
+{
+  "0020": {
+    "trainingRoles": [
+      "legs_balance"
+    ],
+    "exerciseType": "accessory",
+    "programming": {
+      "orderPriority": 3,
+      "warmupSuitability": "conditional",
+      "substitutionFamily": "legs_balance",
+      "defaultAvoid": true
+    },
+    "quality": {
+      "score": 0.65,
+      "confidence": "low",
+      "reviewStatus": "needs_review",
+      "reasons": [
+        "ambiguous_name",
+        "requires_manual_classification"
+      ]
+    }
+  }
+}
