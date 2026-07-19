@@ -803,58 +803,99 @@ function openReplacementPicker({
   if (!context?.item) return;
 
   const currentExercise = exerciseById(context.item.exerciseId);
-  const options = replacementOptions(
-    exercises,
-    context.item.exerciseId,
-    context.existingIds,
-    state.profile,
-    state,
-    state.profile.goal,
-    30,
-  );
+  const profileDifficulty = maxComplexity(state.profile.level);
+  let selectedDifficulty = "profile";
 
-  if (!options.length) {
-    alert("No eligible replacement was found with the current level, equipment and safety filters.");
-    return;
+  const difficultyOptions = [
+    { value: "profile", label: `${LEVELS[state.profile.level]} — profile default` },
+    { value: "1", label: "Starter — complexity 1/4" },
+    { value: "2", label: "Intermediate — complexity 2/4" },
+    { value: "3", label: "Advanced — complexity 3/4" },
+    { value: "4", label: "Expert — complexity 4/4" },
+    { value: "all", label: "All difficulties" },
+  ];
+
+  function renderReplacementResults() {
+    const options = replacementOptions(
+      exercises,
+      context.item.exerciseId,
+      context.existingIds,
+      state.profile,
+      state,
+      state.profile.goal,
+      30,
+      selectedDifficulty,
+    );
+
+    const selectedNumber = Number(selectedDifficulty);
+    const aboveProfile =
+      selectedDifficulty === "all" ||
+      (Number.isFinite(selectedNumber) && selectedNumber > profileDifficulty);
+
+    $("#replacementDifficultyWarning").innerHTML = aboveProfile
+      ? '<p class="notice">This filter includes exercises above your profile difficulty. Choose deliberately and use only movements you can perform safely.</p>'
+      : "";
+
+    $("#replacementResults").innerHTML = options.length
+      ? options
+          .map(
+            (candidate) => `
+              <article class="replacement-option">
+                <img loading="lazy" src="${mediaUrl(candidate.image)}" alt="">
+                <div>
+                  <strong>${escapeHtml(candidate.name)}</strong>
+                  <small>${labelize(candidate.app.group)} · ${labelize(candidate.equipment)}</small>
+                  <small class="complexity-meta">${escapeHtml(complexityText(candidate))} · ${labelize(candidate.app.movement)}</small>
+                </div>
+                <button class="btn small primary choose-replacement" data-id="${candidate.id}">Choose</button>
+              </article>`,
+          )
+          .join("")
+      : '<p>No eligible replacements match this difficulty with the current muscle, equipment and safety filters.</p>';
+
+    $$(".choose-replacement").forEach((button) => {
+      button.onclick = () => {
+        context.apply(button.dataset.id, { permanent, markUnavailable });
+        $("#exerciseDialog").close();
+        if (markUnavailable) {
+          toast("Marked unavailable at this gym and replaced in the routine.");
+        } else if (scope === "session") {
+          toast(permanent ? "Routine updated with your selected substitute." : "Substituted for this session only.");
+        } else {
+          toast(context.successMessage);
+        }
+      };
+    });
   }
 
   $("#exerciseDialogContent").innerHTML = `
     <div class="eyebrow">Choose a substitute</div>
     <h2>Replace ${escapeHtml(currentExercise.name)}</h2>
-    <p>These options match the same muscle group or movement pattern and all respect your ${escapeHtml(LEVELS[state.profile.level])} complexity cap, equipment and active safety filters.</p>
+    <p>Options keep the same muscle group or movement pattern and still respect your equipment, unavailable-machine list and active safety filters.</p>
     <div class="chips">
       <span class="chip">Current: ${escapeHtml(complexityText(currentExercise))}</span>
       <span class="chip">${escapeHtml(profileComplexityText())}</span>
     </div>
-    <div class="replacement-list">${options
-      .map(
-        (candidate) => `
-          <article class="replacement-option">
-            <img loading="lazy" src="${mediaUrl(candidate.image)}" alt="">
-            <div>
-              <strong>${escapeHtml(candidate.name)}</strong>
-              <small>${labelize(candidate.app.group)} · ${labelize(candidate.equipment)}</small>
-              <small class="complexity-meta">${escapeHtml(complexityText(candidate))} · ${labelize(candidate.app.movement)}</small>
-            </div>
-            <button class="btn small primary choose-replacement" data-id="${candidate.id}">Choose</button>
-          </article>`,
-      )
-      .join("")}</div>`;
+    <label class="field" style="margin-top:14px">
+      Difficulty
+      <select id="replacementDifficulty">
+        ${difficultyOptions
+          .map(
+            (option) =>
+              `<option value="${option.value}" ${option.value === selectedDifficulty ? "selected" : ""}>${escapeHtml(option.label)}</option>`,
+          )
+          .join("")}
+      </select>
+    </label>
+    <div id="replacementDifficultyWarning"></div>
+    <div id="replacementResults" class="replacement-list"></div>`;
 
   $("#exerciseDialog").showModal();
-  $$(".choose-replacement").forEach((button) => {
-    button.onclick = () => {
-      context.apply(button.dataset.id, { permanent, markUnavailable });
-      $("#exerciseDialog").close();
-      if (markUnavailable) {
-        toast("Marked unavailable at this gym and replaced in the routine.");
-      } else if (scope === "session") {
-        toast(permanent ? "Routine updated with your selected substitute." : "Substituted for this session only.");
-      } else {
-        toast(context.successMessage);
-      }
-    };
+  $("#replacementDifficulty").addEventListener("change", (event) => {
+    selectedDifficulty = event.target.value;
+    renderReplacementResults();
   });
+  renderReplacementResults();
 }
 
 function startRest(seconds) {
