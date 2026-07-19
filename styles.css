@@ -1,87 +1,812 @@
-# Workout Recommender
+:root {
+  color-scheme: dark;
+  --bg: #0b0d12;
+  --surface: #141822;
+  --surface-2: #1b2130;
+  --surface-3: #232a3b;
+  --text: #f5f7fb;
+  --muted: #9ca7bb;
+  --line: #30384b;
+  --accent: #8ee3b2;
+  --accent-strong: #4bc985;
+  --danger: #ff8989;
+  --warning: #ffd27d;
+  --radius: 18px;
+  --shadow: 0 16px 38px rgba(0, 0, 0, 0.25);
 
-A personal, non-commercial mobile-first workout programme recommender and tracker.
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
 
-This version replaces the original one-off hypertrophy generator with a complete product flow:
+* {
+  box-sizing: border-box;
+}
 
-1. onboarding;
-2. multi-week programme recommendation;
-3. programme review and acceptance;
-4. persistent routine;
-5. guided daily workouts;
-6. set, weight, repetition and RIR tracking;
-7. temporary and permanent exercise substitutions;
-8. progression and workout history;
-9. a searchable library containing all 1,324 source exercises.
+html {
+  background: var(--bg);
+}
 
-## Live deployment
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #151b29, var(--bg) 34rem);
+  color: var(--text);
+}
 
-Deploy this static site using **Settings → Pages → Deploy from a branch → main → /(root)**.
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
 
-## Exercise dataset
+button {
+  cursor: pointer;
+}
 
-The app loads the complete dataset at runtime from:
+a {
+  color: var(--accent);
+}
 
-`https://github.com/hasaneyldrm/exercises-dataset`
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(11, 13, 18, 0.88);
+  backdrop-filter: blur(18px);
+}
 
-The source dataset remains unchanged. `src/dataset.js` creates an application-side enrichment layer for:
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
 
-- normalized muscle groups;
-- movement patterns;
-- estimated complexity;
-- programme-goal suitability;
-- conservative pain and movement flags.
+.brand-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #07120c;
+  font-weight: 900;
+}
 
-This means all 1,324 exercises remain visible in **Exercises**, while the programme engine selects only exercises compatible with the active profile.
+.brand strong,
+.brand small {
+  display: block;
+}
 
-The enrichment is heuristic and is not medical advice.
+.brand small {
+  margin-top: 1px;
+  color: var(--muted);
+}
 
-## Supported programme goals
+.status-pill,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
 
-- Strength
-- Hypertrophy
-- Power and athleticism
-- Muscular endurance
-- General fitness
-- Conditioning
-- Mobility and recovery
+.status-pill.ready {
+  border-color: rgba(142, 227, 178, 0.35);
+  color: var(--accent);
+}
 
-## Programme flow
+.app-shell {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  padding: 22px 16px 110px;
+}
 
-Before acceptance, the user may review or regenerate a complete programme. After **Accept programme**, it becomes a persistent 8–16-week routine. The normal home action then becomes **Start workout** or **Resume workout**, rather than generating a new random session.
+.view {
+  display: none;
+}
 
-## Substitution behaviour
+.view.active {
+  display: block;
+  animation: fade 0.18s ease;
+}
 
-- **Replace for today** changes only the active session.
-- **Replace in routine** updates future instances of that workout template.
-- **Not available at this gym** records the exercise/machine variant as unavailable and permanently replaces it.
+@keyframes fade {
+  from {
+    opacity: 0.4;
+    transform: translateY(4px);
+  }
+}
 
-## Storage
+.center-view {
+  display: none;
+  min-height: 60vh;
+  place-items: center;
+  align-content: center;
+  text-align: center;
+}
 
-Profiles, programmes, sessions, gym observations and history are stored in browser `localStorage`. The Profile screen supports JSON export/import.
+.center-view.active {
+  display: grid;
+}
 
-The 1,324-exercise JSON and media are loaded from the source repository and can be cached by the service worker. They are not duplicated in this repository.
+.loader {
+  width: 42px;
+  height: 42px;
+  border: 4px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 
-## Validation
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
-```bash
-npm run validate
-```
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
 
-## Medical disclaimer
+h1 {
+  font-size: clamp(1.75rem, 6vw, 2.7rem);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+}
 
-This app is a planning and tracking aid, not medical advice. Automated safety flags are conservative text-based heuristics. They do not establish that an exercise is safe for a specific person. Stop if symptoms increase and follow guidance from a qualified clinician or physiotherapist.
+h2 {
+  font-size: 1.35rem;
+}
 
-## Licence and use
+p {
+  color: var(--muted);
+  line-height: 1.55;
+}
 
-This project is intended for personal, educational and non-commercial use. See `NOTICE.md` and retain the source dataset/media attribution.
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
 
-## V2.1 usability flow
+.hero {
+  padding: 18px 0 8px;
+}
 
-- Draft programme recommendations are saved automatically in browser storage.
-- **Continue later** returns to a Today landing screen rather than losing the recommendation.
-- **Today**, **Routine**, **Profile**, and the header brand can recover a saved draft when no programme has been accepted.
-- Every recommended exercise displays an explicit app-derived complexity level from 1/4 to 4/4.
-- The selected experience level acts as a hard maximum complexity filter.
-- Programme review, routine editing, and active workouts offer a direct substitute picker.
-- Substitute choices are filtered by muscle or movement similarity, goal, equipment, pain constraints, and complexity cap.
+.hero p {
+  max-width: 680px;
+}
+
+.card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    rgba(27, 33, 48, 0.98),
+    rgba(20, 24, 34, 0.98)
+  );
+  box-shadow: var(--shadow);
+}
+
+.card + .card {
+  margin-top: 14px;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+}
+
+.grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+label.field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  background: #0f131c;
+  color: var(--text);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(142, 227, 178, 0.1);
+}
+
+fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+legend {
+  margin-bottom: 10px;
+  font-weight: 800;
+}
+
+.option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 9px;
+}
+
+.option {
+  position: relative;
+}
+
+.option input {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.option span {
+  display: block;
+  min-height: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.option input:checked + span {
+  border-color: var(--accent);
+  background: rgba(142, 227, 178, 0.11);
+  color: var(--text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.btn {
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.btn.primary {
+  border: 0;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #07120c;
+}
+
+.btn.danger {
+  color: var(--danger);
+}
+
+.btn.ghost {
+  background: transparent;
+}
+
+.btn.small {
+  padding: 8px 10px;
+  font-size: 0.82rem;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.summary-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.metric {
+  display: grid;
+  gap: 3px;
+}
+
+.metric strong {
+  font-size: 1.35rem;
+}
+
+.metric span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 12px 0;
+}
+
+.programme-workout {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.exercise-line {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.exercise-line:last-child {
+  border-bottom: 0;
+}
+
+.exercise-line .number {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--surface-3);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.exercise-line small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.today-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.today-card::after {
+  position: absolute;
+  top: -90px;
+  right: -80px;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: rgba(142, 227, 178, 0.08);
+  content: "";
+}
+
+.progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #0d1118;
+}
+
+.progress-track > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-strong), var(--accent));
+}
+
+.exercise-stage {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.exercise-media {
+  width: 100%;
+  aspect-ratio: 1.45;
+  border-radius: 16px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.exercise-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.instructions {
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.instructions li {
+  margin: 7px 0;
+  line-height: 1.45;
+}
+
+.set-table {
+  display: grid;
+  gap: 8px;
+}
+
+.set-row {
+  display: grid;
+  grid-template-columns: 42px 1fr 1fr 1fr 46px;
+  align-items: center;
+  gap: 7px;
+}
+
+.set-row input {
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.set-row.done {
+  opacity: 0.58;
+}
+
+.set-check {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.set-check.done {
+  background: var(--accent);
+  color: #07120c;
+}
+
+.rest-timer {
+  position: sticky;
+  bottom: 84px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(142, 227, 178, 0.35);
+  border-radius: 14px;
+  background: #14251d;
+}
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  z-index: 30;
+  display: grid;
+  width: min(720px, 100%);
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+  background: rgba(11, 13, 18, 0.94);
+  backdrop-filter: blur(18px);
+}
+
+.bottom-nav button {
+  padding: 10px 3px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.bottom-nav button.active {
+  background: var(--accent);
+  color: #07120c;
+  font-weight: 900;
+}
+
+.exercise-toolbar {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.exercise-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  gap: 12px;
+}
+
+.exercise-browser-card {
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.exercise-browser-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  background: #fff;
+  object-fit: contain;
+}
+
+.exercise-browser-card div {
+  padding: 12px;
+}
+
+.exercise-browser-card small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+.exercise-dialog {
+  width: min(680px, calc(100% - 24px));
+  max-height: 90vh;
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.exercise-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.dialog-close {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  float: right;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 1.4rem;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.stat {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.stat strong,
+.stat span {
+  display: block;
+}
+
+.stat strong {
+  font-size: 1.45rem;
+}
+
+.stat span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.notice {
+  padding: 12px 14px;
+  border-left: 4px solid var(--warning);
+  border-radius: 10px;
+  background: rgba(255, 210, 125, 0.08);
+  color: #ffe5b7;
+}
+
+.toast {
+  position: fixed;
+  bottom: 95px;
+  left: 50%;
+  z-index: 50;
+  max-width: calc(100% - 30px);
+  padding: 11px 14px;
+  transform: translateX(-50%);
+  border-radius: 12px;
+  background: #f5f7fb;
+  box-shadow: var(--shadow);
+  color: #111722;
+  font-weight: 800;
+}
+
+.attribution {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  padding: 8px 18px 100px;
+  color: #717c91;
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* V2.1 usability additions */
+
+.saved-draft-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-color: rgba(142, 227, 178, 0.28);
+}
+
+.saved-draft-card h2 {
+  margin-bottom: 6px;
+}
+
+.saved-draft-card p {
+  margin-bottom: 0;
+}
+
+.exercise-line-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.complexity-meta {
+  color: var(--accent) !important;
+  font-weight: 700;
+}
+
+.complexity-chip {
+  border-color: rgba(142, 227, 178, 0.35);
+  color: var(--accent);
+}
+
+.replacement-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.replacement-option {
+  display: grid;
+  grid-template-columns: 76px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.replacement-option img {
+  width: 76px;
+  height: 76px;
+  border-radius: 10px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.replacement-option strong,
+.replacement-option small {
+  display: block;
+}
+
+.replacement-option small {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+@media (max-width: 700px) {
+  .grid.two,
+  .grid.three {
+    grid-template-columns: 1fr;
+  }
+
+  .status-pill {
+    max-width: 130px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 650px) {
+  .exercise-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .saved-draft-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .exercise-line {
+    grid-template-columns: 34px 1fr;
+  }
+
+  .exercise-line-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .replacement-option {
+    grid-template-columns: 64px 1fr;
+  }
+
+  .replacement-option img {
+    width: 64px;
+    height: 64px;
+  }
+
+  .replacement-option .choose-replacement {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 480px) {
+  .set-row {
+    grid-template-columns: 34px 1fr 1fr 46px;
+  }
+
+  .rir-field {
+    display: none;
+  }
+}
