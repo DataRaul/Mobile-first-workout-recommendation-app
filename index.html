@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#163832">
+  <meta name="description" content="Mobile-first, pain-aware hypertrophy workout recommender.">
+  <title>Workout Recommender</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">STAGE 3 MVP</p>
+      <h1>Workout Recommender</h1>
+    </div>
+    <button id="installButton" class="ghost-button" hidden>Install</button>
+  </header>
+
+  <main class="app-shell">
+    <section id="workoutView" class="view active" aria-labelledby="workoutTab">
+      <div class="hero-card">
+        <div>
+          <p class="eyebrow">TODAY</p>
+          <h2 id="welcomeText">Build a safe session</h2>
+          <p id="workoutSummary" class="muted">Set your profile, then generate a machine-aware hypertrophy workout.</p>
+        </div>
+        <button id="generateButton" class="primary-button">Generate workout</button>
+      </div>
+
+      <div id="activeFilters" class="chip-row" aria-label="Active recommendation filters"></div>
+      <div id="warningBanner" class="warning-banner" hidden></div>
+      <div id="workoutList" class="workout-list"></div>
+
+      <div id="emptyWorkout" class="empty-state">
+        <h3>No workout generated yet</h3>
+        <p>Your session will respect level, time, equipment, rotation history, and the pain constraints saved in your profile.</p>
+      </div>
+    </section>
+
+    <section id="profileView" class="view" aria-labelledby="profileTab">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">PERSONAL SETTINGS</p>
+          <h2>Profile</h2>
+        </div>
+        <span id="profileSavedBadge" class="status-badge">Local only</span>
+      </div>
+
+      <form id="profileForm" class="form-card">
+        <label>
+          Display name
+          <input id="profileName" name="name" maxlength="40" autocomplete="nickname" placeholder="Raul">
+        </label>
+
+        <div class="two-column">
+          <label>
+            Training level
+            <select id="profileLevel" name="level">
+              <option value="starter">Starter</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="advanced">Advanced</option>
+              <option value="pro">Pro</option>
+            </select>
+          </label>
+
+          <label>
+            Session length
+            <select id="sessionMinutes" name="sessionMinutes">
+              <option value="30">30 minutes</option>
+              <option value="45" selected>45 minutes</option>
+              <option value="60">60 minutes</option>
+              <option value="75">75 minutes</option>
+            </select>
+          </label>
+        </div>
+
+        <fieldset>
+          <legend>Equipment preference</legend>
+          <label class="choice-row">
+            <input type="radio" name="equipmentMode" value="machine_preferred" checked>
+            <span><strong>Machines preferred</strong><small>Prioritise machines and cables, but allow a safe alternative.</small></span>
+          </label>
+          <label class="choice-row">
+            <input type="radio" name="equipmentMode" value="machine_only">
+            <span><strong>Machines only</strong><small>Exclude dumbbells, barbells, and bodyweight movements.</small></span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Pain and movement constraints</legend>
+          <p class="field-help">These are hard filters. They do not replace medical advice.</p>
+          <div class="check-grid">
+            <label><input type="checkbox" name="constraints" value="back_pain"> Back pain</label>
+            <label><input type="checkbox" name="constraints" value="knee_pain"> Knee pain</label>
+            <label><input type="checkbox" name="constraints" value="elbow_pain"> Elbow pain</label>
+            <label><input type="checkbox" name="constraints" value="shoulder_pain"> Shoulder pain</label>
+            <label><input type="checkbox" name="constraints" value="avoid_shoulder_extension"> Avoid shoulder extension</label>
+          </div>
+        </fieldset>
+
+        <label class="choice-row">
+          <input id="kraftwerkMode" type="checkbox" name="kraftwerkMode" checked>
+          <span><strong>Use Kraftwerk equipment profile</strong><small>Unavailable machines will be excluded automatically.</small></span>
+        </label>
+
+        <button class="primary-button" type="submit">Save profile</button>
+      </form>
+    </section>
+
+    <section id="gymView" class="view" aria-labelledby="gymTab">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">SHARED EQUIPMENT MAP</p>
+          <h2>Kraftwerk</h2>
+        </div>
+        <button id="resetGymButton" class="ghost-button">Reset observations</button>
+      </div>
+      <p class="muted">Tap the status of each machine as you discover the gym. Unknown equipment remains eligible; unavailable equipment is excluded.</p>
+      <div id="gymStats" class="stats-row"></div>
+      <div id="equipmentList" class="equipment-list"></div>
+    </section>
+
+    <section id="dataView" class="view" aria-labelledby="dataTab">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">PORTABLE LOCAL DATA</p>
+          <h2>Export and import</h2>
+        </div>
+      </div>
+
+      <div class="data-card">
+        <h3>Share with the second user</h3>
+        <p>Export one JSON file containing the profile, gym observations, preferences, and history. The repository owner can import it, review the equipment map, and commit approved canonical changes.</p>
+        <div class="button-stack">
+          <button id="exportButton" class="primary-button">Export all data</button>
+          <label class="secondary-button file-button">
+            Import JSON
+            <input id="importInput" type="file" accept="application/json,.json">
+          </label>
+        </div>
+        <p id="importStatus" class="muted" role="status"></p>
+      </div>
+
+      <div class="data-card danger-card">
+        <h3>Local reset</h3>
+        <p>Deletes the profile, workout history, and local equipment observations from this browser only.</p>
+        <button id="resetAllButton" class="danger-button">Delete local data</button>
+      </div>
+
+      <div class="data-card">
+        <h3>Design boundaries</h3>
+        <ul>
+          <li>No login or server.</li>
+          <li>No personal data is sent anywhere.</li>
+          <li>No automatic writes to GitHub.</li>
+          <li>Recommendations are deterministic rules, not medical advice.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Primary navigation">
+    <button id="workoutTab" class="nav-button active" data-view="workoutView"><span>▦</span>Workout</button>
+    <button id="profileTab" class="nav-button" data-view="profileView"><span>◎</span>Profile</button>
+    <button id="gymTab" class="nav-button" data-view="gymView"><span>▥</span>Gym</button>
+    <button id="dataTab" class="nav-button" data-view="dataView"><span>⇅</span>Data</button>
+  </nav>
+
+  <template id="exerciseCardTemplate">
+    <article class="exercise-card">
+      <div class="exercise-number"></div>
+      <div class="exercise-content">
+        <div class="exercise-topline">
+          <div>
+            <p class="exercise-muscle"></p>
+            <h3 class="exercise-name"></h3>
+          </div>
+          <button class="icon-button favorite-button" aria-label="Toggle favourite">☆</button>
+        </div>
+        <div class="exercise-prescription"></div>
+        <p class="exercise-equipment muted"></p>
+        <p class="exercise-note"></p>
+        <div class="exercise-actions">
+          <button class="secondary-button rotate-button">Rotate</button>
+          <button class="secondary-button unavailable-button">Machine unavailable</button>
+          <button class="complete-button">Complete</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
