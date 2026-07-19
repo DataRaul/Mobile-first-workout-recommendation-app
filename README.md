@@ -1,6 +1,7 @@
 # Workout Recommender
 
-https://dataraul.github.io/Mobile-first-workout-recommendation-app/
+Link to app: https://dataraul.github.io/Mobile-first-workout-recommendation-app/
+
 A personal, non-commercial mobile-first workout programme recommender and tracker.
 
 This version replaces the original one-off hypertrophy generator with a complete product flow:
