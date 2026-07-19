@@ -1,5 +1,8 @@
 import { DATASET_URL, MEDIA_BASE_URL } from "./config.js";
 
+const ENRICHMENT_URL = "./data/exercise-enrichment.json";
+const OVERRIDES_URL = "./data/exercise-overrides.json";
+
 const normalize = (value) => String(value || "").trim().toLowerCase();
 const hasAny = (text, terms) => terms.some((term) => text.includes(term));
 
@@ -451,26 +454,58 @@ function safetyFlags(exercise) {
   return [...new Set(flags)];
 }
 
-export function enrichExercise(exercise) {
+export function enrichExercise(exercise, overlay = null, override = null) {
   const group = muscleGroup(exercise);
   const move = movement(exercise);
+  const fallback = {
+    group,
+    movement: move,
+    complexity: complexity(exercise, move),
+    trainingRoles: trainingRoles(exercise, group, move),
+    goalTags: goalTags(exercise, move),
+    safetyFlags: safetyFlags(exercise),
+    cautionFlags: [],
+    compatibility: {},
+    setCredits: { [group]: 1 },
+    mechanics: {},
+    programming: {},
+    quality: {
+      score: 0.5,
+      confidence: "fallback",
+      reviewStatus: "heuristic_fallback",
+      reasons: ["local_enrichment_unavailable"],
+    },
+  };
+
+  const base = overlay ? { ...fallback, ...overlay } : fallback;
+  const merged = override
+    ? {
+        ...base,
+        ...override,
+        programming: {
+          ...(base.programming || {}),
+          ...(override.programming || {}),
+        },
+        quality: {
+          ...(base.quality || {}),
+          ...(override.quality || {}),
+        },
+      }
+    : base;
 
   return {
     ...exercise,
     equipment: normalize(exercise.equipment),
-    app: {
-      group,
-      movement: move,
-      complexity: complexity(exercise, move),
-      trainingRoles: trainingRoles(exercise, group, move),
-      goalTags: goalTags(exercise, move),
-      safetyFlags: safetyFlags(exercise),
-    },
+    app: merged,
   };
 }
 
 export async function loadExercises() {
-  const response = await fetch(DATASET_URL, { cache: "force-cache" });
+  const [response, enrichmentResponse, overridesResponse] = await Promise.all([
+    fetch(DATASET_URL, { cache: "force-cache" }),
+    fetch(ENRICHMENT_URL, { cache: "no-cache" }).catch(() => null),
+    fetch(OVERRIDES_URL, { cache: "no-cache" }).catch(() => null),
+  ]);
 
   if (!response.ok) {
     throw new Error(`Exercise dataset could not be loaded (${response.status}).`);
@@ -482,7 +517,29 @@ export async function loadExercises() {
     throw new Error("The full exercise dataset was not returned.");
   }
 
-  return raw.map(enrichExercise);
+  let enrichment = {};
+  if (enrichmentResponse?.ok) {
+    const parsed = await enrichmentResponse.json();
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      enrichment = parsed;
+    }
+  }
+
+  let overrides = {};
+  if (overridesResponse?.ok) {
+    const parsed = await overridesResponse.json();
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      overrides = parsed;
+    }
+  }
+
+  return raw.map((exercise) =>
+    enrichExercise(
+      exercise,
+      enrichment[String(exercise.id)] || null,
+      overrides[String(exercise.id)] || null,
+    ),
+  );
 }
 
 export function mediaUrl(path) {

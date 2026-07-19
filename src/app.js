@@ -11,6 +11,7 @@ import {
   MUSCLE_FOCUS_OPTIONS,
   nextWorkout,
   replacementOptions,
+  refreshProgramVolume,
   TRAINING_ROLE_LABELS,
   workoutDaysForProfile,
   WORKOUT_TYPES,
@@ -128,7 +129,67 @@ function groupCoverageText(item) {
   return `${resolved} added because ${requested} options were exhausted`;
 }
 
-function applyReplacementMetadata(item, replacementId, replacementMeta, candidateComplexity) {
+function constraintNotesHtml(item, compact = false) {
+  const notes = Array.isArray(item?.constraintNotes)
+    ? item.constraintNotes.filter((note) => note.status === "caution")
+    : [];
+  if (!notes.length) return "";
+
+  if (compact) {
+    return `<small class="constraint-note">Caution: ${notes
+      .map((note) => `${labelize(note.constraint)} — ${note.modification}`)
+      .map(escapeHtml)
+      .join(" · ")}</small>`;
+  }
+
+  return `<div class="notice"><strong>Profile-aware caution</strong>${notes
+    .map(
+      (note) =>
+        `<p><strong>${escapeHtml(labelize(note.constraint))}:</strong> ${escapeHtml(note.reason)} ${escapeHtml(note.modification)}</p>`,
+    )
+    .join("")}</div>`;
+}
+
+function weeklyVolumeHtml(program) {
+  const volume = program?.weeklyVolume || {};
+  const entries = Object.entries(volume);
+  if (!entries.length) return "";
+
+  return `
+    <div class="card">
+      <div class="summary-row">
+        <div>
+          <h2>Weekly muscle-volume check</h2>
+          <p>Effective sets include full credit for the primary muscle and fractional credit for meaningful secondary work.</p>
+        </div>
+      </div>
+      <div class="grid two">
+        ${entries
+          .map(([group, values]) => {
+            const statusText =
+              values.status === "below"
+                ? "Below preferred range"
+                : values.status === "above"
+                  ? "Above preferred range"
+                  : "Within preferred range";
+            return `<div class="notice">
+              <strong>${escapeHtml(labelize(group))}: ${values.effective} effective sets</strong>
+              <p>${values.direct} direct · preferred ${values.min}–${values.max} · ${statusText}</p>
+            </div>`;
+          })
+          .join("")}
+      </div>
+      <p><small>${escapeHtml(program.volumeMethod || "")}</small></p>
+    </div>`;
+}
+
+function applyReplacementMetadata(
+  item,
+  replacementId,
+  replacementMeta,
+  candidateComplexity,
+  candidate = null,
+) {
   item.exerciseId = replacementId;
   if (replacementMeta) {
     item.requestedGroup = replacementMeta.requestedGroup || item.requestedGroup || item.targetGroup;
@@ -139,6 +200,23 @@ function applyReplacementMetadata(item, replacementId, replacementMeta, candidat
   }
   if (Number.isFinite(Number(candidateComplexity))) {
     item.difficultyDelta = Number(candidateComplexity) - maxComplexity(state.profile.level);
+  }
+  if (candidate) {
+    item.constraintNotes = (state.profile.constraints || [])
+      .map((constraint) => {
+        const assessment = candidate.app.compatibility?.[constraint];
+        if (!assessment || assessment.status === "normal") return null;
+        return {
+          constraint,
+          status: assessment.status,
+          reason: assessment.reason,
+          modification: assessment.modification,
+          confidence: assessment.confidence,
+        };
+      })
+      .filter(Boolean);
+    item.setCredits = candidate.app.setCredits || { [candidate.app.group]: 1 };
+    item.qualityConfidence = candidate.app.quality?.confidence || "unknown";
   }
 }
 
@@ -440,7 +518,8 @@ function workoutHtml(workout, { editable = false, scope = "view" } = {}) {
                 <small>${labelize(exercise?.app.group)} · ${labelize(exercise?.equipment)} · ${item.sets} × ${item.reps}</small>
                 ${item.targetRole ? `<small>Training role: ${escapeHtml(trainingRoleText(item))}${item.roleMatch && item.roleMatch !== "exact" ? ` · ${escapeHtml(roleCoverageText(item))}` : ""}</small>` : ""}
                 ${item.groupMatch === "companion" ? `<small>Same-day coverage: ${escapeHtml(groupCoverageText(item))}</small>` : ""}
-                <small class="complexity-meta">${escapeHtml(complexityText(exercise))}${item.difficultyDelta ? ` · ${escapeHtml(difficultyFallbackText(item))}` : ""}</small>
+                <small class="complexity-meta">${escapeHtml(complexityText(exercise))}${item.difficultyDelta ? ` · ${escapeHtml(difficultyFallbackText(item))}` : ""}${item.qualityConfidence ? ` · enrichment ${escapeHtml(item.qualityConfidence)}` : ""}</small>
+                ${constraintNotesHtml(item, true)}
               </div>
               <div class="exercise-line-actions">
                 <button class="btn small ghost inspect-exercise" data-id="${item.exerciseId}">View</button>
@@ -504,6 +583,7 @@ function renderPlanner() {
       <p>The routine uses your goal, selected muscles, available equipment and active safety filters. It also balances complementary training roles inside each muscle group instead of repeating redundant movements.</p>
       <div class="notice"><strong>Progression:</strong> ${escapeHtml(program.progression)}</div>
     </div>
+    ${weeklyVolumeHtml(program)}
     <div class="card">
       <div class="summary-row">
         <div>
@@ -719,6 +799,7 @@ function renderSession() {
           ${item.groupMatch === "companion" ? `<span class="chip">${escapeHtml(groupCoverageText(item))}</span>` : ""}
           <span class="chip complexity-chip">${escapeHtml(complexityText(exercise))}${item.difficultyDelta ? ` · ${escapeHtml(difficultyFallbackText(item))}` : ""}</span>
         </div>
+        ${constraintNotesHtml(item)}
         <p><strong>Previous:</strong> ${escapeHtml(previousPerformance(exercise.id))}</p>
         <details><summary>How to perform it</summary><ol class="instructions">${instructionSteps(exercise)
           .map((step) => `<li>${escapeHtml(step)}</li>`)
@@ -815,8 +896,18 @@ function replacementContext({ scope, workoutId, itemIndex }) {
       targetRole: item?.targetRole || null,
       allowedGroups: workout.allowedGroups || workout.emphasis || [],
       existingIds: workout.exercises.map((entry) => entry.exerciseId),
-      apply(replacementId, { replacementMeta = null, candidateComplexity = null } = {}) {
-        applyReplacementMetadata(item, replacementId, replacementMeta, candidateComplexity);
+      apply(
+        replacementId,
+        { replacementMeta = null, candidateComplexity = null, candidate = null } = {},
+      ) {
+        applyReplacementMetadata(
+          item,
+          replacementId,
+          replacementMeta,
+          candidateComplexity,
+          candidate,
+        );
+        refreshProgramVolume(state.draftProgram, exercises, state.profile);
         markDraftUpdated();
         persist();
         renderPlanner();
@@ -836,8 +927,18 @@ function replacementContext({ scope, workoutId, itemIndex }) {
       targetRole: item?.targetRole || null,
       allowedGroups: workout.allowedGroups || workout.emphasis || [],
       existingIds: workout.exercises.map((entry) => entry.exerciseId),
-      apply(replacementId, { replacementMeta = null, candidateComplexity = null } = {}) {
-        applyReplacementMetadata(item, replacementId, replacementMeta, candidateComplexity);
+      apply(
+        replacementId,
+        { replacementMeta = null, candidateComplexity = null, candidate = null } = {},
+      ) {
+        applyReplacementMetadata(
+          item,
+          replacementId,
+          replacementMeta,
+          candidateComplexity,
+          candidate,
+        );
+        refreshProgramVolume(state.activeProgram, exercises, state.profile);
         persist();
         renderRoutine();
       },
@@ -864,10 +965,17 @@ function replacementContext({ scope, workoutId, itemIndex }) {
           markUnavailable = false,
           replacementMeta = null,
           candidateComplexity = null,
+          candidate = null,
         } = {},
       ) {
         const oldId = item.exerciseId;
-        applyReplacementMetadata(item, replacementId, replacementMeta, candidateComplexity);
+        applyReplacementMetadata(
+          item,
+          replacementId,
+          replacementMeta,
+          candidateComplexity,
+          candidate,
+        );
         item.setsLog = item.setsLog.map((set, index) => ({
           set: index + 1,
           weight: "",
@@ -879,7 +987,14 @@ function replacementContext({ scope, workoutId, itemIndex }) {
         if (permanent) {
           const template = workout?.exercises.find((entry) => entry.exerciseId === oldId);
           if (template) {
-            applyReplacementMetadata(template, replacementId, replacementMeta, candidateComplexity);
+            applyReplacementMetadata(
+              template,
+              replacementId,
+              replacementMeta,
+              candidateComplexity,
+              candidate,
+            );
+            refreshProgramVolume(state.activeProgram, exercises, state.profile);
           }
         }
         if (markUnavailable && !state.gym.unavailableExerciseIds.includes(oldId)) {
@@ -975,6 +1090,7 @@ function openReplacementPicker({
           markUnavailable,
           replacementMeta: candidate?._replacement || null,
           candidateComplexity: candidate?.app?.complexity,
+          candidate,
         });
         $("#exerciseDialog").close();
         if (markUnavailable) {
@@ -1083,6 +1199,7 @@ function renderRoutine() {
       <h1>${escapeHtml(program.title)}</h1>
       <p>Week ${currentWeek(program)} of ${program.durationWeeks} · ${program.completedSessions || 0} sessions complete.</p>
     </div>
+    ${weeklyVolumeHtml(program)}
     <div class="card"><h2>Progression</h2><p>${escapeHtml(program.progression)}</p></div>
     <div class="card">
       <h2>Workout templates</h2>

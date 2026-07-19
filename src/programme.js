@@ -65,11 +65,15 @@ export const TRAINING_ROLE_LABELS = {
   biceps_supinated: "Supinated biceps curl",
   biceps_neutral: "Neutral-grip curl",
   biceps_pronated: "Pronated curl / forearm",
+  biceps_lengthened: "Lengthened-position biceps",
+  biceps_shortened: "Shortened-position biceps",
+  biceps_general: "General biceps",
   triceps_pushdown: "Triceps pushdown",
   triceps_overhead: "Overhead triceps",
   triceps_press: "Pressing triceps",
   triceps_general: "General triceps",
   forearms_grip: "Forearm / grip",
+  forearms_wrist: "Wrist flexion / extension",
   legs_knee_dominant: "Knee-dominant legs",
   legs_knee_extension: "Quadriceps isolation",
   legs_hip_dominant: "Hip-dominant legs",
@@ -84,6 +88,14 @@ export const TRAINING_ROLE_LABELS = {
   core_hip_raise: "Leg / knee raise",
   core_flexion: "Trunk flexion",
   core_general: "General core",
+  chest_mobility: "Chest mobility",
+  shoulder_mobility: "Shoulder mobility",
+  back_mobility: "Back mobility",
+  biceps_mobility: "Biceps mobility",
+  triceps_mobility: "Triceps mobility",
+  forearms_mobility: "Forearm mobility",
+  core_mobility: "Core mobility",
+  legs_mobility: "Lower-body mobility",
 };
 
 const GROUP_ROLE_PLANS = {
@@ -106,14 +118,15 @@ const GROUP_ROLE_PLANS = {
     "back_lat_isolation",
   ],
   arms: [
-    "biceps_supinated",
+    "biceps_lengthened",
     "triceps_pushdown",
     "biceps_neutral",
     "triceps_overhead",
-    "forearms_grip",
+    "biceps_shortened",
     "triceps_press",
+    "forearms_grip",
   ],
-  biceps: ["biceps_supinated", "biceps_neutral", "biceps_pronated"],
+  biceps: ["biceps_lengthened", "biceps_neutral", "biceps_shortened", "biceps_supinated", "biceps_pronated"],
   triceps: ["triceps_pushdown", "triceps_overhead", "triceps_press"],
   forearms: ["forearms_grip", "biceps_pronated"],
   legs: [
@@ -145,7 +158,7 @@ const ROLE_FAMILIES = [
   ["shoulder_lateral_raise", "shoulder_rear_delt", "shoulder_front_raise"],
   ["back_horizontal_pull", "back_upper_rear"],
   ["back_vertical_pull", "back_lat_isolation"],
-  ["biceps_supinated", "biceps_neutral", "biceps_pronated", "forearms_grip"],
+  ["biceps_supinated", "biceps_neutral", "biceps_pronated", "biceps_lengthened", "biceps_shortened", "forearms_grip", "forearms_wrist"],
   ["triceps_pushdown", "triceps_overhead", "triceps_press", "triceps_general"],
   ["legs_knee_dominant", "legs_knee_extension"],
   ["legs_hip_dominant", "legs_knee_flexion", "legs_glute_isolation"],
@@ -189,6 +202,53 @@ const COMPANION_GROUP_PRIORITIES = {
   abductors: ["glutes", "quads", "hamstrings", "legs"],
   core: ["back", "chest", "shoulders", "arms", "legs"],
 };
+
+const VOLUME_TARGETS = {
+  hypertrophy: {
+    starter: { min: 6, target: 8, max: 12 },
+    intermediate: { min: 8, target: 10, max: 16 },
+    advanced: { min: 10, target: 12, max: 18 },
+    pro: { min: 10, target: 14, max: 20 },
+  },
+  strength: {
+    starter: { min: 4, target: 6, max: 10 },
+    intermediate: { min: 6, target: 8, max: 12 },
+    advanced: { min: 8, target: 10, max: 14 },
+    pro: { min: 8, target: 12, max: 16 },
+  },
+  general: {
+    starter: { min: 4, target: 6, max: 10 },
+    intermediate: { min: 6, target: 8, max: 12 },
+    advanced: { min: 6, target: 10, max: 14 },
+    pro: { min: 8, target: 10, max: 16 },
+  },
+  endurance: {
+    starter: { min: 6, target: 8, max: 12 },
+    intermediate: { min: 8, target: 10, max: 16 },
+    advanced: { min: 10, target: 12, max: 18 },
+    pro: { min: 10, target: 14, max: 20 },
+  },
+  power: {
+    starter: { min: 4, target: 6, max: 8 },
+    intermediate: { min: 4, target: 6, max: 10 },
+    advanced: { min: 6, target: 8, max: 12 },
+    pro: { min: 6, target: 8, max: 12 },
+  },
+  conditioning: {
+    starter: { min: 4, target: 6, max: 10 },
+    intermediate: { min: 6, target: 8, max: 12 },
+    advanced: { min: 6, target: 10, max: 14 },
+    pro: { min: 8, target: 10, max: 16 },
+  },
+  mobility: {
+    starter: { min: 2, target: 4, max: 8 },
+    intermediate: { min: 2, target: 4, max: 8 },
+    advanced: { min: 2, target: 4, max: 8 },
+    pro: { min: 2, target: 4, max: 8 },
+  },
+};
+
+const HARD_COMPATIBILITY_STATUSES = new Set(["default_exclude", "needs_review"]);
 
 const PRESET_SPLITS = {
   2: [
@@ -411,6 +471,35 @@ export function allowedEquipment(profile) {
   );
 }
 
+function compatibilityStatus(exercise, constraint) {
+  const explicit = exercise.app.compatibility?.[constraint]?.status;
+  if (explicit) return explicit;
+  return (exercise.app.safetyFlags || []).includes(constraint)
+    ? "default_exclude"
+    : "normal";
+}
+
+function activeConstraintNotes(exercise, profile) {
+  return (profile.constraints || [])
+    .map((constraint) => {
+      const assessment = exercise.app.compatibility?.[constraint];
+      if (!assessment || assessment.status === "normal") return null;
+      return {
+        constraint,
+        status: assessment.status,
+        reason: assessment.reason,
+        modification: assessment.modification,
+        confidence: assessment.confidence,
+      };
+    })
+    .filter(Boolean);
+}
+
+function cautionPenalty(exercise, profile) {
+  return activeConstraintNotes(exercise, profile)
+    .reduce((sum, note) => sum + (note.status === "caution" ? 3 : 8), 0);
+}
+
 export function eligibleForProfile(
   exercise,
   profile,
@@ -421,9 +510,14 @@ export function eligibleForProfile(
   if (!allowed.has(exercise.equipment)) return false;
   if ((state.gym?.unavailableExerciseIds || []).includes(exercise.id)) return false;
   if (exercise.app.complexity > complexityCeiling) return false;
-  if ((profile.constraints || []).some((constraint) => exercise.app.safetyFlags.includes(constraint))) {
+  if (
+    (profile.constraints || []).some((constraint) =>
+      HARD_COMPATIBILITY_STATUSES.has(compatibilityStatus(exercise, constraint)),
+    )
+  ) {
     return false;
   }
+  if (exercise.app.quality?.reviewStatus === "needs_review") return false;
   if (profile.goal === "mobility") return exercise.app.goalTags.includes("mobility");
   if (profile.goal === "conditioning") {
     return exercise.app.goalTags.includes("conditioning") || exercise.app.goalTags.includes("general");
@@ -515,6 +609,150 @@ function generationComplexityOrder(profile) {
   return [...new Set(order)];
 }
 
+function volumeTarget(profile, group) {
+  const goal = VOLUME_TARGETS[profile.goal] || VOLUME_TARGETS.general;
+  return goal[profile.level] || goal.starter;
+}
+
+function contributionCredit(exercise, group) {
+  const credits = exercise.app.setCredits || {};
+  if (Number.isFinite(Number(credits[group]))) return Number(credits[group]);
+  if (group === "arms" && ["biceps", "triceps", "forearms"].includes(exercise.app.group)) return 1;
+  if (group === "legs" && ["quads", "hamstrings", "glutes", "calves", "adductors", "abductors"].includes(exercise.app.group)) return 1;
+  return groupMatches(exercise, group) ? 1 : 0;
+}
+
+function volumeEntry(tracker, group) {
+  if (!tracker[group]) tracker[group] = { direct: 0, effective: 0 };
+  return tracker[group];
+}
+
+function volumeSelectionScore(exercise, sets, tracker, selectedGroups, profile) {
+  let score = 0;
+  for (const group of selectedGroups) {
+    const credit = contributionCredit(exercise, group);
+    if (!credit) continue;
+    const current = volumeEntry(tracker, group);
+    const target = volumeTarget(profile, group);
+    const projected = current.effective + sets * credit;
+    if (current.effective < target.min) score += 5 * credit;
+    else if (current.effective < target.target) score += 2.5 * credit;
+    if (projected > target.max) score -= 7 * (projected - target.max) * credit;
+    const isDirect = groupMatches(exercise, group);
+    if (isDirect && current.direct < Math.max(2, target.min * 0.5)) score += 2;
+  }
+  return score;
+}
+
+function addExerciseVolume(tracker, exercise, sets, selectedGroups) {
+  for (const group of selectedGroups) {
+    const credit = contributionCredit(exercise, group);
+    if (!credit) continue;
+    const entry = volumeEntry(tracker, group);
+    entry.effective += sets * credit;
+    if (groupMatches(exercise, group)) entry.direct += sets;
+  }
+}
+
+function calculateWeeklyVolume(workouts, exerciseMap, selectedGroups, profile) {
+  const tracker = {};
+  for (const workout of workouts) {
+    for (const item of workout.exercises) {
+      const exercise = exerciseMap.get(item.exerciseId);
+      if (!exercise) continue;
+      addExerciseVolume(tracker, exercise, Number(item.sets) || 0, selectedGroups);
+    }
+  }
+
+  const summary = {};
+  for (const group of selectedGroups) {
+    const values = tracker[group] || { direct: 0, effective: 0 };
+    const target = volumeTarget(profile, group);
+    const effective = Math.round(values.effective * 10) / 10;
+    const direct = Math.round(values.direct * 10) / 10;
+    summary[group] = {
+      direct,
+      effective,
+      ...target,
+      status:
+        effective < target.min
+          ? "below"
+          : effective > target.max
+            ? "above"
+            : "within",
+    };
+  }
+  return summary;
+}
+
+function rebalanceProgrammeSets(workouts, exerciseMap, selectedGroups, profile) {
+  const minimumSets = 2;
+  const maximumSets = 4;
+
+  for (let iteration = 0; iteration < 30; iteration += 1) {
+    const summary = calculateWeeklyVolume(workouts, exerciseMap, selectedGroups, profile);
+    const below = [...selectedGroups]
+      .filter((group) => summary[group]?.effective < summary[group]?.min)
+      .sort((a, b) => (summary[a]?.effective || 0) - (summary[b]?.effective || 0));
+
+    if (!below.length) break;
+    let changed = false;
+
+    for (const group of below) {
+      const candidates = workouts
+        .flatMap((workout) => workout.exercises)
+        .map((item) => ({ item, exercise: exerciseMap.get(item.exerciseId) }))
+        .filter(({ item, exercise }) =>
+          exercise &&
+          groupMatches(exercise, group) &&
+          Number(item.sets) < maximumSets,
+        )
+        .sort((a, b) =>
+          (a.exercise.app.programming?.orderPriority || 3) -
+          (b.exercise.app.programming?.orderPriority || 3),
+        );
+
+      if (candidates.length) {
+        candidates[0].item.sets = Number(candidates[0].item.sets) + 1;
+        changed = true;
+      }
+    }
+
+    if (!changed) break;
+  }
+
+  for (let iteration = 0; iteration < 30; iteration += 1) {
+    const summary = calculateWeeklyVolume(workouts, exerciseMap, selectedGroups, profile);
+    const above = [...selectedGroups].filter(
+      (group) => summary[group]?.effective > summary[group]?.max,
+    );
+    if (!above.length) break;
+    let changed = false;
+
+    for (const group of above) {
+      const candidates = workouts
+        .flatMap((workout) => workout.exercises)
+        .map((item) => ({ item, exercise: exerciseMap.get(item.exerciseId) }))
+        .filter(({ item, exercise }) =>
+          exercise &&
+          contributionCredit(exercise, group) > 0 &&
+          Number(item.sets) > minimumSets,
+        )
+        .sort((a, b) =>
+          (b.exercise.app.programming?.orderPriority || 3) -
+          (a.exercise.app.programming?.orderPriority || 3),
+        );
+
+      if (candidates.length) {
+        candidates[0].item.sets = Number(candidates[0].item.sets) - 1;
+        changed = true;
+      }
+    }
+
+    if (!changed) break;
+  }
+}
+
 function goalScore(exercise, goal) {
   let score = exercise.app.goalTags.includes(goal) ? 6 : 0;
   if (
@@ -535,48 +773,134 @@ function goalScore(exercise, goal) {
   return score;
 }
 
-function chooseExerciseForGroup(pool, targetGroup, targetRole, used, profile, random) {
+function programmingFitScore(exercise, profile) {
+  const mechanics = exercise.app.mechanics || {};
+  const type = exercise.app.exerciseType || "accessory";
+  const tags = exercise.app.goalTags || [];
+  let score = 0;
+
+  if (exercise.app.programming?.defaultAvoid) score -= 20;
+
+  if (profile.goal === "hypertrophy") {
+    if (["main_lift", "compound_accessory", "accessory", "isolation"].includes(type)) score += 3;
+    if (mechanics.loadability === "high") score += 2;
+    if (mechanics.stability === "low") score += 1;
+    if (mechanics.stability === "high" && exercise.app.complexity >= 3) score -= 4;
+    if (type === "conditioning" || mechanics.impact === "high") score -= 10;
+    if (tags.includes("power") && mechanics.impact === "high") score -= 5;
+  }
+
+  if (profile.goal === "strength") {
+    if (["main_lift", "compound_accessory"].includes(type)) score += 6;
+    if (type === "isolation") score -= 1;
+    if (mechanics.loadability === "high") score += 2;
+  }
+
+  if (profile.goal === "general") {
+    if (mechanics.impact === "high") score -= 5;
+    if (mechanics.stability === "high" && exercise.app.complexity > 2) score -= 2;
+    if (["main_lift", "compound_accessory", "accessory"].includes(type)) score += 2;
+  }
+
+  if (profile.goal === "power") {
+    score += tags.includes("power") ? 10 : -3;
+  }
+
+  if (profile.goal === "endurance") {
+    if (["conditioning", "accessory", "isolation"].includes(type)) score += 3;
+    if (mechanics.fatigueCost === "high") score -= 2;
+  }
+
+  if (profile.goal === "conditioning") {
+    score += tags.includes("conditioning") ? 8 : 0;
+  }
+
+  if (profile.goal === "mobility") {
+    score += tags.includes("mobility") ? 8 : -8;
+  }
+
+  return score;
+}
+
+function roleSpecificFitScore(exercise, targetRole) {
+  if (!targetRole) return 0;
+  const movement = exercise.app.movement;
+  if (targetRole.startsWith("biceps_")) {
+    if (movement === "elbow_flexion") return 6;
+    if (movement === "vertical_pull") return -4;
+  }
+  if (targetRole.startsWith("triceps_")) {
+    if (movement === "elbow_extension") return 6;
+    if (movement === "horizontal_push") return -2;
+  }
+  if (targetRole === "shoulder_lateral_raise") {
+    if ((exercise.app.trainingRoles || []).includes("shoulder_lateral_raise")) return 4;
+  }
+  return 0;
+}
+
+function chooseExerciseForGroup(
+  pool,
+  targetGroup,
+  targetRole,
+  used,
+  profile,
+  random,
+  volumeTracker,
+  selectedProgrammeGroups,
+) {
   const groupCandidates = pool.filter(
     (exercise) => groupMatches(exercise, targetGroup) && !used.has(exercise.id),
   );
   if (!groupCandidates.length) return null;
 
   const targetComplexity = maxComplexity(profile.level);
-  const complexityOrder = generationComplexityOrder(profile);
+  const baseSets = Number((GOALS[profile.goal] || GOALS.general).sets);
+  const candidatesWithTier = groupCandidates.map((exercise) => ({
+    exercise,
+    tier: roleTier(exercise, targetRole),
+  }));
+  const bestAvailableTier = Math.min(...candidatesWithTier.map((item) => item.tier));
 
-  for (const tier of [0, 1, 2]) {
-    const roleCandidates = groupCandidates.filter(
-      (exercise) => roleTier(exercise, targetRole) === tier,
-    );
-    if (!roleCandidates.length) continue;
-
-    for (const complexity of complexityOrder) {
-      const band = roleCandidates.filter(
-        (exercise) => exercise.app.complexity === complexity,
-      );
-      if (!band.length) continue;
-
-      const ranked = band
-        .map((exercise) => ({
-          exercise,
-          score:
-            goalScore(exercise, profile.goal) +
-            ((profile.favorites || []).includes(exercise.id) ? 4 : 0) +
-            random() * 1.5,
-        }))
-        .sort((a, b) => b.score - a.score);
-
+  const ranked = candidatesWithTier
+    .filter((item) => item.tier === bestAvailableTier)
+    .map(({ exercise, tier }) => {
+      const roleScore = tier === 0 ? 18 : tier === 1 ? 8 : 0;
+      const complexityDistance = Math.abs(exercise.app.complexity - targetComplexity);
       return {
-        exercise: ranked[0].exercise,
-        targetGroup,
-        targetRole,
-        roleMatch: tier === 0 ? "exact" : tier === 1 ? "related" : "group",
-        difficultyDelta: complexity - targetComplexity,
+        exercise,
+        tier,
+        score:
+          roleScore +
+          roleSpecificFitScore(exercise, targetRole) +
+          goalScore(exercise, profile.goal) +
+          programmingFitScore(exercise, profile) +
+          volumeSelectionScore(
+            exercise,
+            baseSets,
+            volumeTracker,
+            selectedProgrammeGroups,
+            profile,
+          ) +
+          (exercise.app.quality?.confidence === "high" ? 1.5 : 0) -
+          cautionPenalty(exercise, profile) -
+          complexityDistance * 0.75 +
+          ((profile.favorites || []).includes(exercise.id) ? 4 : 0) +
+          random() * 0.5,
       };
-    }
-  }
+    })
+    .sort((a, b) => b.score - a.score);
 
-  return null;
+  const best = ranked[0];
+  if (!best) return null;
+
+  return {
+    exercise: best.exercise,
+    targetGroup,
+    targetRole,
+    roleMatch: best.tier === 0 ? "exact" : best.tier === 1 ? "related" : "group",
+    difficultyDelta: best.exercise.app.complexity - targetComplexity,
+  };
 }
 
 function chooseExercise(
@@ -587,6 +911,8 @@ function chooseExercise(
   profile,
   random,
   selectedGroupOccurrences,
+  volumeTracker,
+  selectedProgrammeGroups,
 ) {
   const groupOrder = [
     slot.group,
@@ -608,6 +934,8 @@ function chooseExercise(
       used,
       profile,
       random,
+      volumeTracker,
+      selectedProgrammeGroups,
     );
     if (!selection) continue;
 
@@ -663,6 +991,9 @@ function prescription(profile, selection, index, slot) {
     groupMatch: selection.groupMatch || "exact",
     roleMatch: selection.roleMatch,
     difficultyDelta: selection.difficultyDelta,
+    constraintNotes: activeConstraintNotes(exercise, profile),
+    setCredits: exercise.app.setCredits || { [exercise.app.group]: 1 },
+    qualityConfidence: exercise.app.quality?.confidence || "unknown",
     sets,
     reps,
     restSeconds,
@@ -713,6 +1044,14 @@ export function generateProgram(exercises, profile, state, variation = 0) {
   });
   const random = rng(hashString(JSON.stringify(profile) + variation));
   const usedAcross = new Set();
+  const selectedProgrammeGroups = new Set(
+    workoutDays.flatMap((day) =>
+      day.strictFocus || day.type === "custom"
+        ? day.emphasis
+        : slotsForWorkoutDay(day),
+    ),
+  );
+  const volumeTracker = {};
   const targetCount =
     profile.sessionMinutes <= 30 ? 5 : profile.sessionMinutes <= 45 ? 6 : profile.sessionMinutes <= 60 ? 7 : 8;
 
@@ -737,6 +1076,8 @@ export function generateProgram(exercises, profile, state, variation = 0) {
         profile,
         random,
         selectedGroupOccurrences,
+        volumeTracker,
+        selectedProgrammeGroups,
       );
       if (!selection) continue;
 
@@ -755,11 +1096,12 @@ export function generateProgram(exercises, profile, state, variation = 0) {
           profile,
           random,
           selectedGroupOccurrences,
+          volumeTracker,
+          selectedProgrammeGroups,
         );
-        if (
-          alternative &&
-          selectionQuality(alternative) <= selectionQuality(selection)
-        ) {
+        if (alternative) {
+          // With 1,324 records available, prefer weekly variety over repeating
+          // the same exercise in another workout.
           selection = alternative;
         }
       }
@@ -769,6 +1111,12 @@ export function generateProgram(exercises, profile, state, variation = 0) {
       selectedGroupOccurrences.set(
         selection.targetGroup,
         (selectedGroupOccurrences.get(selection.targetGroup) || 0) + 1,
+      );
+      addExerciseVolume(
+        volumeTracker,
+        selection.exercise,
+        Number((GOALS[profile.goal] || GOALS.general).sets),
+        selectedProgrammeGroups,
       );
       chosen.push({ selection, slot });
     }
@@ -786,6 +1134,20 @@ export function generateProgram(exercises, profile, state, variation = 0) {
     };
   });
 
+  const exerciseMap = new Map(exercises.map((exercise) => [exercise.id, exercise]));
+  rebalanceProgrammeSets(
+    workouts,
+    exerciseMap,
+    selectedProgrammeGroups,
+    profile,
+  );
+  const weeklyVolume = calculateWeeklyVolume(
+    workouts,
+    exerciseMap,
+    selectedProgrammeGroups,
+    profile,
+  );
+
   const config = GOALS[profile.goal] || GOALS.general;
   const durationWeeks = Number(profile.durationWeeks || config.weeks);
   return {
@@ -802,11 +1164,33 @@ export function generateProgram(exercises, profile, state, variation = 0) {
     splitName: splitLabel(profile, workoutDays),
     workoutDays,
     progression: progression(profile.goal),
+    weeklyVolume,
+    volumeMethod: "Primary sets count 1.0; strong secondary work counts 0.5; stabilising work counts 0.25.",
+    enrichmentVersion: "3.0.0",
     reviewWeeks: [4, 8, durationWeeks].filter(
       (value, index, values) => value <= durationWeeks && values.indexOf(value) === index,
     ),
     workouts,
   };
+}
+
+export function refreshProgramVolume(program, exercises, profile) {
+  if (!program) return {};
+  const selectedGroups = new Set(
+    Object.keys(program.weeklyVolume || {}).length
+      ? Object.keys(program.weeklyVolume)
+      : (program.workouts || []).flatMap(
+          (workout) => workout.allowedGroups || workout.emphasis || [],
+        ),
+  );
+  const exerciseMap = new Map(exercises.map((exercise) => [exercise.id, exercise]));
+  program.weeklyVolume = calculateWeeklyVolume(
+    program.workouts || [],
+    exerciseMap,
+    selectedGroups,
+    profile,
+  );
+  return program.weeklyVolume;
 }
 
 export function acceptProgram(program) {
@@ -864,9 +1248,14 @@ export function replacementOptions(
       if (exercise.id === currentId || existingIds.includes(exercise.id)) return false;
       if (!allowed.has(exercise.equipment)) return false;
       if ((state.gym?.unavailableExerciseIds || []).includes(exercise.id)) return false;
-      if ((profile.constraints || []).some((constraint) => exercise.app.safetyFlags.includes(constraint))) {
+      if (
+        (profile.constraints || []).some((constraint) =>
+          HARD_COMPATIBILITY_STATUSES.has(compatibilityStatus(exercise, constraint)),
+        )
+      ) {
         return false;
       }
+      if (exercise.app.quality?.reviewStatus === "needs_review") return false;
       if (profile.goal === "mobility" && !exercise.app.goalTags.includes("mobility")) return false;
       if (
         profile.goal === "conditioning" &&
@@ -920,6 +1309,8 @@ export function replacementOptions(
           (sameMovement ? 3 : 0) +
           (sameEquipment ? 1.5 : 0) +
           goalScore(exercise, goal) -
+          cautionPenalty(exercise, profile) +
+          (exercise.app.quality?.confidence === "high" ? 1.5 : 0) -
           complexityDistance * 0.75,
       };
     })

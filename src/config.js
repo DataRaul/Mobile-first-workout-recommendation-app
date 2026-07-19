@@ -12,33 +12,17 @@ export const GOALS = {
   mobility: { label: "Mobility & recovery", sets: 2, reps: "30–60 sec", rest: 30, summary: "Build a repeatable mobility routine with controlled ranges.", weeks: 8 },
 };
 
-export const LEVELS = {
-  starter: "Starter",
-  intermediate: "Intermediate",
-  advanced: "Advanced",
-  pro: "Highly experienced",
-};
+export const LEVELS = { starter: "Starter", intermediate: "Intermediate", advanced: "Advanced", pro: "Highly experienced" };
 
 export const EQUIPMENT_PRESETS = {
-  full_gym: {
-    label: "Full gym",
-    equipment: ["body weight","dumbbell","barbell","cable","leverage machine","smith machine","ez barbell","weighted","assisted","sled machine","kettlebell","band","stability ball","medicine ball","rope","roller"],
-  },
-  machines: {
-    label: "Machines and cables",
-    equipment: ["leverage machine","cable","smith machine","assisted","sled machine","body weight"],
-  },
-  home_dumbbells: {
-    label: "Home: dumbbells",
-    equipment: ["body weight","dumbbell","band","stability ball","kettlebell"],
-  },
+  full_gym: { label: "Full gym", equipment: ["body weight","dumbbell","barbell","cable","leverage machine","smith machine","ez barbell","weighted","assisted","sled machine","kettlebell","band","stability ball","medicine ball","rope","roller"] },
+  machines: { label: "Machines and cables", equipment: ["leverage machine","cable","smith machine","assisted","sled machine","body weight"] },
+  home_dumbbells: { label: "Home: dumbbells", equipment: ["body weight","dumbbell","band","stability ball","kettlebell"] },
   bodyweight: { label: "Bodyweight only", equipment: ["body weight"] },
   custom: { label: "Custom equipment", equipment: [] },
 };
 
-export const COMMON_EQUIPMENT = [
-  "body weight","dumbbell","barbell","cable","leverage machine","smith machine","ez barbell","kettlebell","band","weighted","assisted","sled machine","stability ball","medicine ball","rope","roller"
-];
+export const COMMON_EQUIPMENT = ["body weight","dumbbell","barbell","cable","leverage machine","smith machine","ez barbell","kettlebell","band","weighted","assisted","sled machine","stability ball","medicine ball","rope","roller"];
 
 export const CONSTRAINTS = {
   back_pain: "Back-pain aware",
