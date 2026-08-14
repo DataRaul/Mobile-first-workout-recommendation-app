@@ -302,6 +302,21 @@ legend {
   color: var(--text);
 }
 
+.option span strong,
+.option span small {
+  display: block;
+}
+
+.option span small {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.storage-options {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

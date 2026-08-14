@@ -55,6 +55,17 @@ function toast(message) {
   }, 3000);
 }
 
+function currentDeviceLabel() {
+  const mobile =
+    navigator.userAgentData?.mobile ??
+    /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  return mobile ? "this mobile device" : "this computer";
+}
+
+function backupMessage(backup) {
+  return `Backup saved as ${backup.fileName} in ${backup.location}.`;
+}
+
 function view(viewId) {
   $$(".view").forEach((element) => element.classList.toggle("active", element.id === viewId));
   $$("#bottomNav button").forEach((button) => {
@@ -242,6 +253,8 @@ function renderOnboarding(edit = false) {
 
   let selectedDaysPerWeek = Math.min(6, Math.max(2, Number(profile.daysPerWeek) || 3));
   let selectedPreset = profile.splitPreset || getSplitPresets(selectedDaysPerWeek)[0].id;
+  const profileStorage = state.preferences?.profileStorage || "browser";
+  const deviceLabel = currentDeviceLabel();
   let selectedWorkoutDays = workoutDaysForProfile({
     ...profile,
     daysPerWeek: selectedDaysPerWeek,
@@ -312,6 +325,20 @@ function renderOnboarding(edit = false) {
             ([key, value]) => `<label class="option"><input type="checkbox" name="constraints" value="${key}" ${(profile.constraints || []).includes(key) ? "checked" : ""}><span>${value}</span></label>`,
           )
           .join("")}</div>
+      </fieldset>
+      <fieldset>
+        <legend>Where should your profile be saved?</legend>
+        <div class="option-grid storage-options">
+          <label class="option">
+            <input type="radio" name="profileStorage" value="browser" ${profileStorage === "browser" ? "checked" : ""}>
+            <span><strong>This browser only</strong><small>Keep the live profile in this browser on ${deviceLabel}.</small></span>
+          </label>
+          <label class="option">
+            <input type="radio" name="profileStorage" value="browser_and_backup" ${profileStorage === "browser_and_backup" ? "checked" : ""}>
+            <span><strong>This browser + backup file</strong><small>Also choose a file location on supported computers, or download it on mobile.</small></span>
+          </label>
+        </div>
+        <p class="notice">There is no account or cloud sync. Clearing this browser's site data removes the live copy. A backup file can be imported on another phone or computer.</p>
       </fieldset>
       <div class="actions">
         <button class="btn primary" type="submit">${edit ? "Save and rebuild recommendation" : "Build my programme"}</button>
@@ -438,7 +465,7 @@ function renderOnboarding(edit = false) {
     }
   });
 
-  $("#profileForm").addEventListener("submit", (event) => {
+  $("#profileForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const workoutDays = selectedWorkoutDays.map((day, index) => ({
@@ -471,17 +498,47 @@ function renderOnboarding(edit = false) {
       splitPreset: selectedPreset,
       workoutDays,
     };
+    const selectedStorage = String(form.get("profileStorage") || "browser");
+    state.preferences = {
+      ...state.preferences,
+      profileStorage: selectedStorage,
+    };
 
     try {
       state.draftProgram = generateProgram(exercises, state.profile, state, 0);
       if (edit) state.activeProgram = null;
       state.activeSession = null;
       persist();
-      renderPlanner();
-      view("plannerView");
     } catch (error) {
       alert(error.message);
+      return;
     }
+
+    let confirmation = `Profile saved in this browser on ${deviceLabel}.`;
+    if (selectedStorage === "browser_and_backup") {
+      try {
+        const backup = await exportState(state, { chooseLocation: true });
+        if (backup) {
+          state.preferences = {
+            ...state.preferences,
+            lastBackupAt: new Date().toISOString(),
+            lastBackupFileName: backup.fileName,
+            lastBackupLocation: backup.location,
+          };
+          persist();
+          confirmation = `${confirmation} ${backupMessage(backup)}`;
+        } else {
+          confirmation = `${confirmation} Backup creation was cancelled.`;
+        }
+      } catch (error) {
+        console.error(error);
+        confirmation = `${confirmation} The backup file could not be created.`;
+      }
+    }
+
+    renderPlanner();
+    view("plannerView");
+    toast(confirmation);
   });
 
   $("#cancelProfile")?.addEventListener("click", () => {
@@ -1343,6 +1400,11 @@ function openExercise(id) {
 
 function renderProfile() {
   const profile = state.profile;
+  const preferences = state.preferences || {};
+  const deviceLabel = currentDeviceLabel();
+  const lastBackup = preferences.lastBackupFileName
+    ? `<p><strong>Latest backup:</strong> ${escapeHtml(preferences.lastBackupFileName)} — ${escapeHtml(preferences.lastBackupLocation || "download location")}.</p>`
+    : "<p><strong>Latest backup:</strong> No backup file has been created yet.</p>";
   $("#profileView").innerHTML = `
     <div class="hero"><div class="eyebrow">Profile</div><h1>${escapeHtml(profile?.name || "Training profile")}</h1><p>Changing programme inputs rebuilds the recommendation. History is retained.</p></div>
     <div class="card">
@@ -1367,10 +1429,12 @@ function renderProfile() {
         .join("<br>")}</p>
     </div>
     <div class="card">
-      <h2>Data and sharing</h2>
-      <p>Export the profile, routine, gym observations and history to move them to another browser or send them to the repository owner.</p>
+      <h2>Where your data is saved</h2>
+      <p><strong>Live copy:</strong> This browser on ${deviceLabel}. It is not stored in an account or automatically synced to another device.</p>
+      ${lastBackup}
+      <p>Export the profile, routine, gym observations and history to create or update a portable backup.</p>
       <div class="actions">
-        <button id="exportData" class="btn">Export data</button>
+        <button id="exportData" class="btn">Create backup file</button>
         <label class="btn">Import data<input id="importData" type="file" accept="application/json" hidden></label>
         <button id="resetData" class="btn danger">Reset all local data</button>
       </div>
@@ -1389,7 +1453,26 @@ function renderProfile() {
     renderOnboarding(true);
     view("onboardingView");
   };
-  $("#exportData").onclick = () => exportState(state);
+  $("#exportData").onclick = async () => {
+    try {
+      const backup = await exportState(state, { chooseLocation: true });
+      if (!backup) {
+        toast("Export cancelled.");
+        return;
+      }
+      state.preferences = {
+        ...state.preferences,
+        lastBackupAt: new Date().toISOString(),
+        lastBackupFileName: backup.fileName,
+        lastBackupLocation: backup.location,
+      };
+      persist();
+      renderProfile();
+      toast(backupMessage(backup));
+    } catch (error) {
+      alert(`Could not export data: ${error.message}`);
+    }
+  };
   $("#importData").onchange = async (event) => {
     try {
       state = await importState(event.target.files[0]);

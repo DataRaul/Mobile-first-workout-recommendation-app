@@ -1,4 +1,4 @@
-const CACHE = "workout-recommender-v3.0-enriched-20260720";
+const CACHE = "workout-recommender-v3.1-profile-storage-20260814";
 
 const APP = [
   "./",
