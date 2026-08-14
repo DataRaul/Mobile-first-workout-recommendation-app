@@ -1,8 +1,10 @@
 {
-  "version": "3.0.0",
+  "version": "3.1.0",
   "records": 1324,
   "sourceSha256": "656634224b8977b99a6d765470ee123260d4979715eaa4e7c0b7c8bb0d79f93d",
-  "overlaySha256": "2bd10b7c1894e3b4b00598d6dd360843754c6b2af767f3000257afdaa310048c",
+  "baselineOverlaySha256": "2bd10b7c1894e3b4b00598d6dd360843754c6b2af767f3000257afdaa310048c",
+  "overlaySha256": "5aa802248705c3dcad8ca1ed9f4575e3840a42ee37ca532a38e8df9c195d9c26",
+  "generator": "scripts/rerun-enrichment.mjs",
   "confidenceCounts": {
     "high": 1321,
     "low": 1,
@@ -14,20 +16,26 @@
     "review_recommended": 2
   },
   "reviewQueue": 3,
+  "difficultyCounts": {
+    "1": 477,
+    "2": 688,
+    "3": 127,
+    "4": 32
+  },
   "groupCounts": {
-    "core": 169,
-    "quads": 44,
+    "abductors": 5,
+    "adductors": 6,
     "back": 210,
+    "biceps": 151,
     "calves": 59,
+    "cardio": 29,
     "chest": 158,
+    "core": 169,
+    "forearms": 37,
     "glutes": 144,
     "hamstrings": 28,
-    "adductors": 6,
-    "triceps": 141,
-    "cardio": 29,
-    "biceps": 151,
-    "shoulders": 143,
-    "forearms": 37,
-    "abductors": 5
+    "quads": 44,
+    "shoulders": 146,
+    "triceps": 138
   }
 }

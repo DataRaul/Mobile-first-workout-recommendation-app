@@ -39,4 +39,8 @@ for (const goal of ["strength", "hypertrophy", "power", "endurance", "general", 
   if (program.workouts.length !== 4) throw new Error(`${goal}: expected four workouts`);
   if (program.workouts.some(workout => workout.exercises.length < 5)) throw new Error(`${goal}: too few exercises`);
 }
+const starterProgram = generateProgram(exercises, { ...base, level: "starter", goal: "general" }, state, 0);
+if (starterProgram.workouts.some(workout => workout.exercises.length < 5)) {
+  throw new Error("starter: too few exercises after the difficulty cap");
+}
 console.log("Programme engine smoke tests passed.");

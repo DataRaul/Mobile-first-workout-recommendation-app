@@ -1,4 +1,11 @@
 import { DATASET_URL, MEDIA_BASE_URL } from "./config.js";
+import {
+  assessDifficulty,
+  correctGoalTags,
+  correctMovement,
+  correctedGroup,
+  correctTrainingRoles,
+} from "./enrichment-rules.js";
 
 const ENRICHMENT_URL = "./data/exercise-enrichment.json";
 const OVERRIDES_URL = "./data/exercise-overrides.json";
@@ -455,14 +462,27 @@ function safetyFlags(exercise) {
 }
 
 export function enrichExercise(exercise, overlay = null, override = null) {
-  const group = muscleGroup(exercise);
-  const move = movement(exercise);
+  const legacyMove = movement(exercise);
+  const move = correctMovement(exercise, legacyMove);
+  const group = correctedGroup(exercise, muscleGroup(exercise), move);
+  const difficulty = assessDifficulty(exercise, {
+    movement: move,
+    exerciseType: move === "mobility" ? "mobility" : null,
+    mechanics: {},
+  });
+  const roles = correctTrainingRoles(exercise, trainingRoles(exercise, group, move), group, move);
   const fallback = {
     group,
     movement: move,
-    complexity: complexity(exercise, move),
-    trainingRoles: trainingRoles(exercise, group, move),
-    goalTags: goalTags(exercise, move),
+    complexity: difficulty.level,
+    difficulty: {
+      level: difficulty.level,
+      technique: difficulty.technique,
+      relativeStrength: difficulty.relativeStrength,
+      mechanicalDemand: difficulty.mechanicalDemand,
+    },
+    trainingRoles: roles,
+    goalTags: correctGoalTags(goalTags(exercise, move), move),
     safetyFlags: safetyFlags(exercise),
     cautionFlags: [],
     compatibility: {},
