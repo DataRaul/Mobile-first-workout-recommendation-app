@@ -60,7 +60,9 @@ Before acceptance, the user may review or regenerate a complete programme. After
 
 ## Storage
 
-Profiles, programmes, sessions, gym observations and history are stored in browser `localStorage`. The Profile screen supports JSON export/import.
+Profiles, programmes, sessions, gym observations and history are stored in browser `localStorage` on the current phone or computer. During profile creation, the user can keep the live profile in that browser only or also create a portable JSON backup. Compatible desktop browsers open a Save dialog; mobile and other browsers use their normal Downloads location. The Profile screen always identifies the live storage location and supports JSON export/import.
+
+There is no account or cloud sync. Clearing the browser's site data removes the local copy unless a JSON backup was created.
 
 The 1,324-exercise JSON and media are loaded from the source repository and can be cached by the service worker. They are not duplicated in this repository.
 

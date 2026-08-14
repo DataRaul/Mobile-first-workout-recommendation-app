@@ -8,10 +8,27 @@ export const DEFAULT_STATE = {
   activeSession: null,
   history: [],
   gym: { unavailableExerciseIds: [], unavailableEquipment: [] },
-  preferences: { language: "en" },
+  preferences: {
+    language: "en",
+    profileStorage: "browser",
+    lastBackupAt: null,
+    lastBackupFileName: null,
+    lastBackupLocation: null,
+  },
 };
 
 const clone = value => JSON.parse(JSON.stringify(value));
+
+function normalizeState(value) {
+  return {
+    ...clone(DEFAULT_STATE),
+    ...value,
+    preferences: {
+      ...clone(DEFAULT_STATE.preferences),
+      ...(value.preferences || {}),
+    },
+  };
+}
 
 function migrateLegacy() {
   try {
@@ -39,7 +56,9 @@ function migrateLegacy() {
 export function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (saved?.schemaVersion === 2) return { ...clone(DEFAULT_STATE), ...saved };
+    if (saved?.schemaVersion === 2) {
+      return normalizeState(saved);
+    }
   } catch {}
   return migrateLegacy() || clone(DEFAULT_STATE);
 }
@@ -49,21 +68,55 @@ export function saveState(state) {
   return state;
 }
 
-export function exportState(state) {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+export async function exportState(state, { chooseLocation = false } = {}) {
+  const content = JSON.stringify(state, null, 2);
+  const fileName = `workout-recommender-${new Date().toISOString().slice(0,10)}.json`;
+
+  if (chooseLocation && typeof window.showSaveFilePicker === "function") {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [
+          {
+            description: "Workout Recommender backup",
+            accept: { "application/json": [".json"] },
+          },
+        ],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(content);
+      await writable.close();
+      return {
+        fileName: handle.name || fileName,
+        location: "the folder you selected",
+      };
+    } catch (error) {
+      if (error?.name === "AbortError") return null;
+      console.warn("The file picker was unavailable; using a browser download instead.", error);
+    }
+  }
+
+  const blob = new Blob([content], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `workout-recommender-${new Date().toISOString().slice(0,10)}.json`;
+  a.download = fileName;
+  document.body.append(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  return {
+    fileName,
+    location: "your browser's Downloads location",
+  };
 }
 
 export async function importState(file) {
   const parsed = JSON.parse(await file.text());
   if (parsed?.schemaVersion !== 2) throw new Error("This is not a Workout Recommender v2 export.");
-  saveState(parsed);
-  return parsed;
+  const imported = normalizeState(parsed);
+  saveState(imported);
+  return imported;
 }
 
 export function resetState() {
