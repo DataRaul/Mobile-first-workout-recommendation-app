@@ -1,12 +1,12 @@
 {
   "name": "mobile-first-workout-recommendation-app",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "private": true,
   "type": "module",
   "description": "Mobile-first workout recommendation and tracking PWA.",
   "scripts": {
-    "check": "node --check src/app.js && node --check src/dataset.js && node --check src/enrichment-rules.js && node --check src/programme.js && node --check src/config.js && node --check src/storage.js && node --check scripts/rerun-enrichment.mjs && node --check service-worker.js",
-    "test": "node scripts/test-enrichment.mjs && node scripts/test-programme.mjs && node scripts/test-storage.mjs",
+    "check": "node --check src/app.js && node --check src/dataset.js && node --check src/enrichment-rules.js && node --check src/programme.js && node --check src/config.js && node --check src/storage.js && node --check scripts/rerun-enrichment.mjs && node --check scripts/test-continuation.mjs && node --check service-worker.js",
+    "test": "node scripts/test-enrichment.mjs && node scripts/test-programme.mjs && node scripts/test-continuation.mjs && node scripts/test-storage.mjs",
     "validate": "node scripts/validate.mjs && npm test",
     "enrichment:rerun": "node scripts/rerun-enrichment.mjs",
     "enrichment:check": "node scripts/rerun-enrichment.mjs --check"

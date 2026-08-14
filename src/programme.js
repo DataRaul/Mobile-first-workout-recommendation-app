@@ -1215,6 +1215,194 @@ export function nextWorkout(program) {
   return program.workouts[(program.nextWorkoutIndex || 0) % program.workouts.length];
 }
 
+function completedSets(item) {
+  return (item?.setsLog || [])
+    .filter((set) => set.done)
+    .map((set, index) => ({
+      set: index + 1,
+      weight: String(set.weight ?? ""),
+      reps: String(set.reps ?? ""),
+      rir: String(set.rir ?? ""),
+    }));
+}
+
+export function summarizeProgramPerformance(program, history = []) {
+  if (!program) return {};
+
+  const performance = {};
+  const sessions = history
+    .filter((session) => session.programId === program.id && session.completedAt)
+    .sort((a, b) => String(a.completedAt).localeCompare(String(b.completedAt)));
+
+  for (const session of sessions) {
+    for (const item of session.exercises || []) {
+      const sets = completedSets(item);
+      if (!sets.length) continue;
+      performance[item.exerciseId] = {
+        exerciseId: item.exerciseId,
+        workoutId: session.workoutId,
+        workoutName: session.workoutName,
+        completedAt: session.completedAt,
+        prescribedSets: Number(item.sets) || sets.length,
+        prescribedReps: item.reps || "",
+        sets,
+      };
+    }
+  }
+
+  return performance;
+}
+
+export function completedProgramSnapshot(program, history = [], completedAt = new Date().toISOString()) {
+  if (!program) return null;
+  return {
+    ...clone(program),
+    status: "completed",
+    completedAt,
+    performanceByExercise: summarizeProgramPerformance(program, history),
+  };
+}
+
+function sameTrainingSlot(previousItem, nextItem) {
+  if (
+    previousItem.targetRole &&
+    nextItem.targetRole &&
+    previousItem.targetRole === nextItem.targetRole
+  ) {
+    return true;
+  }
+  const previousGroup = previousItem.requestedGroup || previousItem.targetGroup;
+  const nextGroup = nextItem.requestedGroup || nextItem.targetGroup;
+  return Boolean(previousGroup && nextGroup && previousGroup === nextGroup);
+}
+
+function prescriptionChanges(previousItem, nextItem) {
+  const changes = [];
+  if (Number(previousItem.sets) !== Number(nextItem.sets)) {
+    changes.push({ field: "sets", before: previousItem.sets, after: nextItem.sets });
+  }
+  if (String(previousItem.reps) !== String(nextItem.reps)) {
+    changes.push({ field: "reps", before: previousItem.reps, after: nextItem.reps });
+  }
+  if (Number(previousItem.restSeconds) !== Number(nextItem.restSeconds)) {
+    changes.push({
+      field: "rest",
+      before: previousItem.restSeconds,
+      after: nextItem.restSeconds,
+    });
+  }
+  return changes;
+}
+
+export function comparePrograms(previousProgram, nextProgram) {
+  const summary = { retained: 0, replaced: 0, added: 0, removed: 0, adjusted: 0 };
+  const retainedExerciseIds = new Set();
+  const workouts = [];
+  const previousWorkouts = previousProgram?.workouts || [];
+  const nextWorkouts = nextProgram?.workouts || [];
+  const workoutCount = Math.max(previousWorkouts.length, nextWorkouts.length);
+
+  for (let workoutIndex = 0; workoutIndex < workoutCount; workoutIndex += 1) {
+    const previousWorkout = previousWorkouts[workoutIndex] || null;
+    const nextWorkoutItem = nextWorkouts[workoutIndex] || null;
+    const previousItems = previousWorkout?.exercises || [];
+    const nextItems = nextWorkoutItem?.exercises || [];
+    const usedPrevious = new Set();
+    const entries = [];
+
+    for (const nextItem of nextItems) {
+      let previousIndex = previousItems.findIndex(
+        (item, index) => !usedPrevious.has(index) && item.exerciseId === nextItem.exerciseId,
+      );
+      let status = "retained";
+
+      if (previousIndex < 0) {
+        previousIndex = previousItems.findIndex(
+          (item, index) => !usedPrevious.has(index) && sameTrainingSlot(item, nextItem),
+        );
+        status = previousIndex >= 0 ? "replaced" : "added";
+      }
+
+      const previousItem = previousIndex >= 0 ? previousItems[previousIndex] : null;
+      if (previousIndex >= 0) usedPrevious.add(previousIndex);
+      const changes = previousItem ? prescriptionChanges(previousItem, nextItem) : [];
+      summary[status] += 1;
+      if (status === "retained") retainedExerciseIds.add(nextItem.exerciseId);
+      if (changes.length) summary.adjusted += 1;
+
+      entries.push({
+        status,
+        previousItem,
+        nextItem,
+        changes,
+        performance: previousItem
+          ? previousProgram?.performanceByExercise?.[previousItem.exerciseId] || null
+          : null,
+      });
+    }
+
+    previousItems.forEach((previousItem, index) => {
+      if (usedPrevious.has(index)) return;
+      summary.removed += 1;
+      entries.push({
+        status: "removed",
+        previousItem,
+        nextItem: null,
+        changes: [],
+        performance:
+          previousProgram?.performanceByExercise?.[previousItem.exerciseId] || null,
+      });
+    });
+
+    workouts.push({
+      previousWorkout,
+      nextWorkout: nextWorkoutItem,
+      entries,
+    });
+  }
+
+  return {
+    previousProgramId: previousProgram?.id || null,
+    nextProgramId: nextProgram?.id || null,
+    summary,
+    retainedExerciseIds: [...retainedExerciseIds],
+    workouts,
+  };
+}
+
+export function linkProgramContinuation(nextProgram, previousProgram) {
+  if (!nextProgram || !previousProgram) return nextProgram;
+  const comparison = comparePrograms(previousProgram, nextProgram);
+  return {
+    ...nextProgram,
+    predecessorProgramId: previousProgram.id,
+    carryForwardExerciseIds: comparison.retainedExerciseIds,
+  };
+}
+
+export function carriedForwardSets(program, previousProgram, item) {
+  const retained = new Set(program?.carryForwardExerciseIds || []);
+  const performance = previousProgram?.performanceByExercise?.[item.exerciseId];
+  if (
+    !performance ||
+    program?.predecessorProgramId !== previousProgram?.id ||
+    !retained.has(item.exerciseId)
+  ) {
+    return null;
+  }
+
+  return Array.from({ length: Number(item.sets) || 0 }, (_, index) => {
+    const previousSet = performance.sets?.[index];
+    return {
+      set: index + 1,
+      weight: previousSet?.weight || "",
+      reps: previousSet?.reps || "",
+      rir: previousSet?.rir || "",
+      done: false,
+    };
+  });
+}
+
 export function replacementOptions(
   exercises,
   currentId,

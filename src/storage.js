@@ -5,6 +5,7 @@ export const DEFAULT_STATE = {
   profile: null,
   draftProgram: null,
   activeProgram: null,
+  previousProgram: null,
   activeSession: null,
   history: [],
   gym: { unavailableExerciseIds: [], unavailableEquipment: [] },

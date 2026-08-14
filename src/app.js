@@ -3,10 +3,14 @@ import { loadExercises, mediaUrl, uniqueValues } from "./dataset.js";
 import { exportState, importState, loadState, resetState, saveState } from "./storage.js";
 import {
   acceptProgram,
+  carriedForwardSets,
+  comparePrograms,
+  completedProgramSnapshot,
   currentWeek,
   defaultWorkoutDays,
   generateProgram,
   getSplitPresets,
+  linkProgramContinuation,
   maxComplexity,
   MUSCLE_FOCUS_OPTIONS,
   nextWorkout,
@@ -192,6 +196,111 @@ function weeklyVolumeHtml(program) {
       </div>
       <p><small>${escapeHtml(program.volumeMethod || "")}</small></p>
     </div>`;
+}
+
+function performanceText(performance) {
+  const sets = performance?.sets || [];
+  if (!sets.length) return "No final weight or repetitions were recorded.";
+  return `Last recorded: ${sets
+    .map((set) => `${set.weight || "—"} kg × ${set.reps || "—"}${set.rir ? ` · RIR ${set.rir}` : ""}`)
+    .join(", ")}`;
+}
+
+function prescriptionChangeText(changes) {
+  if (!changes.length) return "Prescription unchanged";
+  return changes
+    .map((change) => {
+      if (change.field === "rest") return `rest ${change.before}s → ${change.after}s`;
+      return `${change.field} ${change.before} → ${change.after}`;
+    })
+    .join(" · ");
+}
+
+function programmeComparisonHtml(previousProgram, nextProgram) {
+  if (
+    !previousProgram ||
+    !nextProgram ||
+    nextProgram.predecessorProgramId !== previousProgram.id
+  ) {
+    return "";
+  }
+
+  const comparison = comparePrograms(previousProgram, nextProgram);
+  const labels = {
+    retained: { symbol: "✓", text: "Retained" },
+    replaced: { symbol: "↔", text: "Replaced" },
+    added: { symbol: "+", text: "Added" },
+    removed: { symbol: "−", text: "Removed" },
+  };
+
+  return `
+    <div class="card">
+      <div class="summary-row">
+        <div>
+          <div class="eyebrow">Programme follow-up</div>
+          <h2>Previous programme versus new recommendation</h2>
+          <p>The recommender built a new programme from your current profile. Exact retained exercises carry their last recorded weight and repetitions into their first occurrence in the new programme; replacements start blank.</p>
+        </div>
+      </div>
+      <div class="chips">
+        <span class="chip">${comparison.summary.retained} retained</span>
+        <span class="chip">${comparison.summary.replaced} replaced</span>
+        <span class="chip">${comparison.summary.added} added</span>
+        <span class="chip">${comparison.summary.removed} removed</span>
+        <span class="chip">${comparison.summary.adjusted} prescriptions adjusted</span>
+      </div>
+      ${comparison.workouts
+        .map(({ previousWorkout, nextWorkout: nextWorkoutItem, entries }) => {
+          const workoutName = nextWorkoutItem?.name || previousWorkout?.name || "Workout";
+          return `<div class="programme-workout">
+            <h3>${escapeHtml(workoutName)}</h3>
+            ${entries
+              .map((entry) => {
+                const label = labels[entry.status];
+                const previousExercise = entry.previousItem
+                  ? exerciseById(entry.previousItem.exerciseId)
+                  : null;
+                const nextExercise = entry.nextItem
+                  ? exerciseById(entry.nextItem.exerciseId)
+                  : null;
+                const title =
+                  entry.status === "retained"
+                    ? nextExercise?.name || entry.nextItem.exerciseId
+                    : entry.status === "replaced"
+                      ? `${previousExercise?.name || entry.previousItem.exerciseId} → ${nextExercise?.name || entry.nextItem.exerciseId}`
+                      : entry.status === "added"
+                        ? nextExercise?.name || entry.nextItem.exerciseId
+                        : previousExercise?.name || entry.previousItem.exerciseId;
+                const group =
+                  entry.nextItem?.requestedGroup ||
+                  entry.nextItem?.targetGroup ||
+                  entry.previousItem?.requestedGroup ||
+                  entry.previousItem?.targetGroup ||
+                  nextExercise?.app.group ||
+                  previousExercise?.app.group ||
+                  "";
+                return `<div class="exercise-line">
+                  <span class="number">${label.symbol}</span>
+                  <div>
+                    <strong>${escapeHtml(label.text)}: ${escapeHtml(title)}</strong>
+                    <small>${escapeHtml(labelize(group))}${entry.changes.length ? ` · ${escapeHtml(prescriptionChangeText(entry.changes))}` : entry.status === "retained" ? ` · ${escapeHtml(prescriptionChangeText([]))}` : ""}</small>
+                    ${entry.performance ? `<small>${escapeHtml(performanceText(entry.performance))}</small>` : ""}
+                    ${entry.status === "replaced" && entry.performance ? "<small>Previous load is shown for reference only and is not transferred to the replacement.</small>" : ""}
+                  </div>
+                </div>`;
+              })
+              .join("")}
+          </div>`;
+        })
+        .join("")}
+    </div>`;
+}
+
+function generateDraftProgram(variation = 0, previousProgram = null) {
+  const generated = generateProgram(exercises, state.profile, state, variation);
+  return previousProgram
+    ? linkProgramContinuation(generated, previousProgram)
+    : generated;
 }
 
 function applyReplacementMetadata(
@@ -505,7 +614,8 @@ function renderOnboarding(edit = false) {
     };
 
     try {
-      state.draftProgram = generateProgram(exercises, state.profile, state, 0);
+      const continuationSource = state.activeProgram ? null : state.previousProgram;
+      state.draftProgram = generateDraftProgram(0, continuationSource);
       if (edit) state.activeProgram = null;
       state.activeSession = null;
       persist();
@@ -610,7 +720,7 @@ function bindWorkoutActions() {
 function renderPlanner() {
   let program = state.draftProgram;
   if (!program) {
-    state.draftProgram = generateProgram(exercises, state.profile, state, 0);
+    state.draftProgram = generateDraftProgram(0, state.previousProgram);
     persist();
     program = state.draftProgram;
   }
@@ -635,6 +745,7 @@ function renderPlanner() {
       </div>
       <button id="continueLater" class="btn ghost">Continue later</button>
     </div>
+    ${programmeComparisonHtml(state.previousProgram, program)}
     <div class="card">
       <h2>Why this fits</h2>
       <p>The routine uses your goal, selected muscles, available equipment and active safety filters. It also balances complementary training roles inside each muscle group instead of repeating redundant movements.</p>
@@ -666,11 +777,13 @@ function renderPlanner() {
     toast("Programme accepted. Your routine is now active.");
   };
   $("#anotherProgram").onclick = () => {
-    state.draftProgram = generateProgram(
-      exercises,
-      state.profile,
-      state,
+    const continuationSource =
+      program.predecessorProgramId === state.previousProgram?.id
+        ? state.previousProgram
+        : null;
+    state.draftProgram = generateDraftProgram(
       (program.variation || 0) + 1,
+      continuationSource,
     );
     persist();
     renderPlanner();
@@ -689,16 +802,17 @@ function renderPlanner() {
 function renderToday() {
   if (!state.activeProgram) {
     const draft = state.draftProgram;
+    const followUp = draft?.predecessorProgramId === state.previousProgram?.id;
     $("#todayView").innerHTML = `
       <div class="hero">
         <div class="eyebrow">Today</div>
         <h1>Your programme is not active yet</h1>
-        <p>${draft ? "Your saved recommendation is ready to continue." : "Build a recommendation before starting workouts."}</p>
+        <p>${draft ? followUp ? "Your completed programme and next recommendation are ready to compare." : "Your saved recommendation is ready to continue." : "Build a recommendation before starting workouts."}</p>
       </div>
       <article class="card today-card">
         <div class="summary-row">
           <div>
-            <div class="eyebrow">${draft ? "Saved draft" : "No recommendation"}</div>
+            <div class="eyebrow">${draft ? followUp ? "Programme follow-up" : "Saved draft" : "No recommendation"}</div>
             <h2>${draft ? escapeHtml(draft.title) : "Create your programme"}</h2>
             <p>${draft ? `${draft.daysPerWeek} days/week · ${draft.splitName} · ${profileComplexityText()}` : "Your profile will be used to create a multi-week routine."}</p>
           </div>
@@ -712,7 +826,7 @@ function renderToday() {
 
     $("#continueDraft").onclick = () => {
       if (!state.draftProgram) {
-        state.draftProgram = generateProgram(exercises, state.profile, state, 0);
+        state.draftProgram = generateDraftProgram(0, state.previousProgram);
         persist();
       }
       renderPlanner();
@@ -720,7 +834,11 @@ function renderToday() {
     };
     $("#newDraft")?.addEventListener("click", () => {
       const variation = (state.draftProgram?.variation || 0) + 1;
-      state.draftProgram = generateProgram(exercises, state.profile, state, variation);
+      const continuationSource =
+        state.draftProgram?.predecessorProgramId === state.previousProgram?.id
+          ? state.previousProgram
+          : null;
+      state.draftProgram = generateDraftProgram(variation, continuationSource);
       persist();
       renderPlanner();
       view("plannerView");
@@ -787,16 +905,37 @@ function createSession() {
     startedAt: new Date().toISOString(),
     currentIndex: 0,
     allowedGroups: workout.allowedGroups || workout.emphasis || [],
-    exercises: workout.exercises.map((item) => ({
-      ...item,
-      setsLog: Array.from({ length: item.sets }, (_, index) => ({
-        set: index + 1,
-        weight: "",
-        reps: "",
-        rir: "",
-        done: false,
-      })),
-    })),
+    exercises: workout.exercises.map((item) => {
+      const alreadyPerformed = state.history.some(
+        (session) =>
+          session.programId === state.activeProgram.id &&
+          session.exercises?.some(
+            (entry) =>
+              entry.exerciseId === item.exerciseId &&
+              entry.setsLog?.some((set) => set.done),
+          ),
+      );
+      const carriedSets = alreadyPerformed
+        ? null
+        : carriedForwardSets(
+            state.activeProgram,
+            state.previousProgram,
+            item,
+          );
+      return {
+        ...item,
+        carriedFromPrevious: Boolean(carriedSets),
+        setsLog:
+          carriedSets ||
+          Array.from({ length: item.sets }, (_, index) => ({
+            set: index + 1,
+            weight: "",
+            reps: "",
+            rir: "",
+            done: false,
+          })),
+      };
+    }),
   };
   persist();
 }
@@ -812,6 +951,12 @@ function previousPerformance(exerciseId) {
           .join(", ") || "No completed sets logged"
       );
     }
+  }
+  const stored = state.previousProgram?.performanceByExercise?.[exerciseId];
+  if (stored?.sets?.length) {
+    return stored.sets
+      .map((set) => `${set.weight || "—"} × ${set.reps || "—"}`)
+      .join(", ");
   }
   return "No previous logged sets";
 }
@@ -858,6 +1003,7 @@ function renderSession() {
         </div>
         ${constraintNotesHtml(item)}
         <p><strong>Previous:</strong> ${escapeHtml(previousPerformance(exercise.id))}</p>
+        ${item.carriedFromPrevious ? '<div class="notice"><strong>Carried forward</strong><p>The last recorded weight, repetitions and RIR are prefilled below. Edit them to match what you actually complete today.</p></div>' : ""}
         <details><summary>How to perform it</summary><ol class="instructions">${instructionSteps(exercise)
           .map((step) => `<li>${escapeHtml(step)}</li>`)
           .join("")}</ol></details>
@@ -1040,6 +1186,7 @@ function replacementContext({ scope, workoutId, itemIndex }) {
           rir: "",
           done: false,
         }));
+        item.carriedFromPrevious = false;
 
         if (permanent) {
           const template = workout?.exercises.find((entry) => entry.exerciseId === oldId);
@@ -1231,6 +1378,29 @@ function finishSession() {
   state.activeProgram.completedSessions = (state.activeProgram.completedSessions || 0) + 1;
   state.activeProgram.nextWorkoutIndex =
     ((state.activeProgram.nextWorkoutIndex || 0) + 1) % state.activeProgram.workouts.length;
+
+  const completedProgram = state.activeProgram;
+  const requiredSessions = completedProgram.durationWeeks * completedProgram.daysPerWeek;
+  if ((completedProgram.completedSessions || 0) >= requiredSessions) {
+    const previousProgram = completedProgramSnapshot(
+      completedProgram,
+      state.history,
+      session.completedAt,
+    );
+    state.previousProgram = previousProgram;
+    state.activeProgram = null;
+    state.draftProgram = generateDraftProgram(
+      (completedProgram.variation || 0) + 1,
+      previousProgram,
+    );
+    persist();
+    renderAll();
+    renderPlanner();
+    view("plannerView");
+    toast("Programme completed. Compare it with your next recommendation.");
+    return;
+  }
+
   persist();
   renderAll();
   view("progressView");
@@ -1522,7 +1692,9 @@ function routeInitial() {
     renderAll();
     view("todayView");
   } else {
-    if (!state.draftProgram) state.draftProgram = generateProgram(exercises, state.profile, state, 0);
+    if (!state.draftProgram) {
+      state.draftProgram = generateDraftProgram(0, state.previousProgram);
+    }
     persist();
     renderPlanner();
     view("plannerView");
