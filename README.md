@@ -38,6 +38,27 @@ This means all 1,324 exercises remain visible in **Exercises**, while the progra
 
 The enrichment is heuristic and is not medical advice.
 
+### Reproducible enrichment audit
+
+Enrichment version 3.1 evaluates every source exercise from three separate angles:
+
+1. technical skill and coordination;
+2. relative-strength accessibility, including how much bodyweight must be supported or moved;
+3. mechanical demand from stability, impact, loading, range, fatigue and setup.
+
+The app-facing difficulty is the most demanding of those three angles. Mobility work is capped at level 2, and level 4 requires an explicit expert skill/strength pattern or agreement from two assessment angles. This makes the experience-level filter conservative without treating every dumbbell, cable, unilateral or kneeling exercise as advanced.
+
+The previous version is frozen at `data/enrichment-baselines/exercise-enrichment-v3.0.json`. The complete before/after counts, transitions, changed record IDs and muscle-group matrix are stored in `data/enrichment-audit.json`.
+
+To reproduce the enrichment from an already downloaded upstream dataset:
+
+```bash
+npm run enrichment:rerun -- --source /path/to/exercises.json
+npm run enrichment:check -- --source /path/to/exercises.json
+```
+
+Without `--source`, the generator reads the attributed upstream JSON URL. It validates that all 1,324 IDs are present and records the exact input, baseline and output SHA-256 hashes in the metadata.
+
 ## Supported programme goals
 
 - Strength

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 
 const required = [
-  "index.html", "styles.css", "src/app.js", "src/config.js", "src/dataset.js",
+  "index.html", "styles.css", "src/app.js", "src/config.js", "src/dataset.js", "src/enrichment-rules.js",
   "src/programme.js", "src/storage.js", "service-worker.js", "manifest.webmanifest",
   "README.md", "NOTICE.md", "LICENSE"
 ];

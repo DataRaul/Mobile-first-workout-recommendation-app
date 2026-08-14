@@ -1,4 +1,4 @@
-const CACHE = "workout-recommender-v3.1-profile-storage-20260814";
+const CACHE = "workout-recommender-v3.1-enrichment-20260815";
 
 const APP = [
   "./",
@@ -8,6 +8,7 @@ const APP = [
   "./src/config.js",
   "./src/storage.js",
   "./src/dataset.js",
+  "./src/enrichment-rules.js",
   "./src/programme.js",
   "./src/app.js",
   "./data/exercise-enrichment.json",
