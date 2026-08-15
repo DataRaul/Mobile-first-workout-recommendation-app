@@ -1781,11 +1781,19 @@ export function replacementOptions(
           complexityDistance * 0.75,
       };
     })
-    .sort(
-      (a, b) =>
+    .sort((a, b) => {
+      const matchTier = (item) =>
+        item.exercise._replacement.groupMatch === "exact"
+          ? item.exercise._replacement.roleMatch === "exact"
+            ? 0
+            : 1
+          : 2;
+      return (
+        matchTier(a) - matchTier(b) ||
         b.score - a.score ||
-        a.exercise.name.localeCompare(b.exercise.name),
-    )
+        a.exercise.name.localeCompare(b.exercise.name)
+      );
+    })
     .slice(0, limit)
     .map((item) => item.exercise);
 }
