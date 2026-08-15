@@ -644,6 +644,58 @@ function roleTier(exercise, targetRole) {
   return 2;
 }
 
+const ROLE_MOVEMENTS = {
+  chest_incline_press: ["horizontal_push"],
+  chest_horizontal_press: ["horizontal_push"],
+  chest_decline_press: ["horizontal_push"],
+  chest_adduction: ["horizontal_push", "isolation"],
+  shoulder_press: ["vertical_push"],
+  shoulder_lateral_raise: ["shoulder_raise", "raise", "isolation"],
+  shoulder_rear_delt: ["horizontal_pull", "horizontal_push", "shoulder_raise", "isolation"],
+  shoulder_front_raise: ["shoulder_raise", "raise", "isolation"],
+  shoulder_rotation: ["isolation"],
+  back_horizontal_pull: ["horizontal_pull"],
+  back_vertical_pull: ["vertical_pull"],
+  back_upper_rear: ["horizontal_pull", "isolation"],
+  back_lat_isolation: ["vertical_pull", "isolation"],
+  biceps_supinated: ["elbow_flexion"],
+  biceps_neutral: ["elbow_flexion"],
+  biceps_pronated: ["elbow_flexion"],
+  biceps_lengthened: ["elbow_flexion"],
+  biceps_shortened: ["elbow_flexion"],
+  forearms_grip: ["elbow_flexion", "isolation"],
+  forearms_wrist: ["elbow_flexion", "isolation"],
+  triceps_pushdown: ["elbow_extension"],
+  triceps_overhead: ["elbow_extension"],
+  triceps_press: ["horizontal_push", "vertical_push"],
+  triceps_general: ["elbow_extension", "horizontal_push", "vertical_push"],
+  legs_knee_dominant: ["knee_dominant"],
+  legs_knee_extension: ["knee_extension", "isolation"],
+  legs_hip_dominant: ["hip_hinge"],
+  legs_knee_flexion: ["knee_flexion"],
+  legs_glute_isolation: ["hip_hinge", "hip_abduction", "isolation"],
+  legs_calves: ["plantar_flexion"],
+  legs_adductors: ["hip_adduction", "isolation"],
+  legs_abductors: ["hip_abduction", "isolation"],
+  core_anti_extension: ["anti_extension"],
+  core_lateral: ["lateral_flexion", "anti_extension"],
+  core_rotation: ["trunk_rotation"],
+  core_hip_raise: ["hip_flexion_core"],
+  core_flexion: ["trunk_flexion"],
+};
+
+export function movementRoleFit(exercise, targetRole) {
+  if (!targetRole) return 1;
+  if (targetRole.endsWith("_mobility")) {
+    return exercise.app.movement === "mobility" ? 0 : 2;
+  }
+
+  const allowed = ROLE_MOVEMENTS[targetRole];
+  if (allowed) return allowed.includes(exercise.app.movement) ? 0 : 2;
+  if (["cardio", "mobility"].includes(exercise.app.movement)) return 2;
+  return 1;
+}
+
 function generationComplexityOrder(profile) {
   const target = maxComplexity(profile.level);
   const order = [target];
@@ -1011,14 +1063,20 @@ function chooseExerciseForGroup(
 
   const targetComplexity = maxComplexity(profile.level);
   const baseSets = Number((GOALS[profile.goal] || GOALS.general).sets);
-  const candidatesWithTier = groupCandidates.map((exercise) => ({
-    exercise,
-    tier: roleTier(exercise, targetRole),
-  }));
-  const bestAvailableTier = Math.min(...candidatesWithTier.map((item) => item.tier));
+  const candidatesWithTier = groupCandidates.map((exercise) => {
+    const tier = roleTier(exercise, targetRole);
+    const movementFit = movementRoleFit(exercise, targetRole);
+    return {
+      exercise,
+      tier,
+      movementFit,
+      semanticRank: movementFit * 3 + tier,
+    };
+  });
+  const bestSemanticRank = Math.min(...candidatesWithTier.map((item) => item.semanticRank));
 
   const ranked = candidatesWithTier
-    .filter((item) => item.tier === bestAvailableTier)
+    .filter((item) => item.semanticRank === bestSemanticRank)
     .map(({ exercise, tier }) => {
       const roleScore = tier === 0 ? 18 : tier === 1 ? 8 : 0;
       const complexityDistance = Math.abs(exercise.app.complexity - targetComplexity);
@@ -1049,11 +1107,19 @@ function chooseExerciseForGroup(
   const best = ranked[0];
   if (!best) return null;
 
+  const resolvedRole =
+    best.tier === 2
+      ? (best.exercise.app.trainingRoles || []).find((role) =>
+          (GROUP_ROLE_PLANS[targetGroup] || []).includes(role),
+        ) || null
+      : targetRole;
+
   return {
     exercise: best.exercise,
     targetGroup,
-    targetRole,
-    roleMatch: best.tier === 0 ? "exact" : best.tier === 1 ? "related" : "group",
+    requestedRole: targetRole,
+    targetRole: resolvedRole,
+    roleMatch: best.tier === 0 ? "exact" : best.tier === 1 ? "related" : resolvedRole ? "alternative" : "group",
     difficultyDelta: best.exercise.app.complexity - targetComplexity,
   };
 }
@@ -1146,7 +1212,8 @@ function prescription(profile, selection, index, slot) {
     exerciseId: exercise.id,
     requestedGroup: selection.requestedGroup || slot.group,
     targetGroup: selection.targetGroup || slot.group,
-    targetRole: selection.targetRole || slot.role,
+    targetRole: selection.targetRole,
+    requestedRole: selection.requestedRole || slot.role,
     groupMatch: selection.groupMatch || "exact",
     roleMatch: selection.roleMatch,
     difficultyDelta: selection.difficultyDelta,

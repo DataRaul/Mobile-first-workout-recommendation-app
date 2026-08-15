@@ -245,7 +245,8 @@ export function correctMovement(exercise, existingMovement) {
   const name = actionName(exercise);
 
   if (hasPhrase(name, ["stretch", "mobility", "pose", "foam roll"])) return "mobility";
-  if (hasPhrase(name, ["run", "running", "cycling", "jump rope", "burpee", "mountain climber", "jumping jack", "sprint"])) return "cardio";
+  if (hasPhrase(name, ["run", "running", "cycling", "jump rope", "burpee", "mountain climber", "jumping jack", "sprint", "quick feet", "fast feet"])) return "cardio";
+  if (hasPhrase(name, ["reverse fly", "reverse flye", "revers fly", "rear fly", "rear delt fly"])) return "horizontal_pull";
   if (hasPhrase(name, ["planche push-up", "planche push up"])) return "horizontal_push";
   if (hasPhrase(name, ["handstand push-up", "handstand push up"])) return "vertical_push";
   if (hasPhrase(name, ["push-up", "push up"])) return "horizontal_push";
@@ -273,6 +274,7 @@ export function correctMovement(exercise, existingMovement) {
 
 export function correctedGroup(exercise, existingGroup, movement) {
   const name = normalize(exercise.name);
+  if (hasPhrase(name, ["modified push up to lower arms"])) return "triceps";
   if (hasPhrase(name, ["handstand", "handstand push-up", "handstand push up", "stalder press"])) return "shoulders";
   if (movement === "cardio" && normalize(exercise.target) === "cardiovascular system") return "cardio";
   return existingGroup;
@@ -280,6 +282,8 @@ export function correctedGroup(exercise, existingGroup, movement) {
 
 export function correctTrainingRoles(exercise, existingRoles, group, movement) {
   const name = normalize(exercise.name);
+  if (hasPhrase(name, ["modified push up to lower arms"])) return ["triceps_press"];
+  if (hasPhrase(name, ["quick feet", "fast feet"])) return [];
   if (group === "shoulders" && hasPhrase(name, ["handstand", "handstand push-up", "handstand push up", "stalder press"])) {
     return ["shoulder_press"];
   }
@@ -301,6 +305,7 @@ export function correctTrainingRoles(exercise, existingRoles, group, movement) {
 export function correctExerciseType(exercise, existingType, movement) {
   const name = normalize(exercise.name);
   if (movement === "mobility") return "mobility";
+  if (movement === "cardio") return "conditioning";
   if (hasPhrase(name, [
     "muscle-up", "muscle up", "planche", "front lever", "back lever", "human flag",
     "handstand push-up", "handstand push up", "pistol squat", "single leg squat", "stalder press",
@@ -367,7 +372,10 @@ export function correctGoalTags(existingTags, movement) {
   if (["knee_dominant", "hip_hinge", "horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull"].includes(movement)) {
     tags.add("strength");
   }
-  if (movement === "cardio") tags.add("conditioning");
+  if (movement === "cardio") {
+    for (const tag of ["strength", "hypertrophy", "power", "mobility"]) tags.delete(tag);
+    for (const tag of ["conditioning", "endurance", "general"]) tags.add(tag);
+  }
   if (movement === "mobility") tags.add("mobility");
   return [...tags];
 }

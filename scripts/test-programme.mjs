@@ -4,6 +4,7 @@ import {
   generateProgram,
   getSplitPresets,
   maxComplexity,
+  movementRoleFit,
   replacementOptions,
 } from "../src/programme.js";
 
@@ -59,6 +60,20 @@ const base = {
   durationWeeks: 12, equipmentPreset: "full_gym", equipment: [], constraints: [], favorites: []
 };
 const state = { gym: { unavailableExerciseIds: [] } };
+
+const roleFixture = (movement) => ({ app: { movement } });
+if (movementRoleFit(roleFixture("horizontal_pull"), "shoulder_press") !== 2) {
+  throw new Error("a reverse-fly movement must not satisfy a shoulder-press role");
+}
+if (movementRoleFit(roleFixture("horizontal_push"), "biceps_lengthened") !== 2) {
+  throw new Error("a push-up movement must not satisfy a biceps role");
+}
+if (movementRoleFit(roleFixture("cardio"), "legs_knee_dominant") !== 2) {
+  throw new Error("a cardio drill must not satisfy a knee-dominant strength role");
+}
+if (movementRoleFit(roleFixture("vertical_push"), "shoulder_press") !== 0) {
+  throw new Error("a vertical press must remain an exact shoulder-press movement fit");
+}
 for (const goal of ["strength", "hypertrophy", "power", "endurance", "general", "conditioning", "mobility"]) {
   const program = generateProgram(exercises, { ...base, goal }, state, 0);
   if (program.workouts.length !== 4) throw new Error(`${goal}: expected four workouts`);

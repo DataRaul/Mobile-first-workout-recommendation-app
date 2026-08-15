@@ -128,6 +128,10 @@ function difficultyFallbackText(item) {
 
 function roleCoverageText(item) {
   if (item?.roleMatch === "related") return "closest related role";
+  if (item?.roleMatch === "alternative") {
+    const requested = TRAINING_ROLE_LABELS[item.requestedRole] || labelize(item.requestedRole);
+    return `same-muscle alternative to ${requested}`;
+  }
   if (item?.roleMatch === "group") return "same-muscle fallback";
   return "";
 }
