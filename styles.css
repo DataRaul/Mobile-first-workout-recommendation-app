@@ -293,6 +293,19 @@ p {
   margin: 5px 0 8px;
 }
 
+.profile-section-heading {
+  margin: 24px 0 10px;
+}
+
+.profile-section-heading h2,
+.profile-section-heading p {
+  margin: 5px 0 0;
+}
+
+.profile-section-heading p {
+  color: var(--muted);
+}
+
 .profile-subsection {
   margin-top: 18px;
 }
