@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import {
   latestRecordedSession,
+  invalidCompletedSets,
   READINESS_GUIDANCE,
   sessionCompletion,
   sessionMetrics,
   updateSetLogValue,
+  validateSetLog,
+  weightForDisplay,
+  weightForStorage,
 } from "../src/session.js";
 
 const session = (doneValues) => ({
@@ -67,6 +71,26 @@ assert.equal(
 );
 assert.match(READINESS_GUIDANCE.fatigued.guidance, /5–10% less weight/);
 assert.match(READINESS_GUIDANCE.pain.guidance, /Do not train through/);
+
+assert.deepEqual(validateSetLog({ weight: "", reps: "12", rir: "2" }), {
+  valid: true,
+  errors: {},
+});
+assert.equal(validateSetLog({ weight: "-1", reps: "", rir: "11" }).valid, false);
+assert.deepEqual(Object.keys(validateSetLog({ weight: "-1", reps: "", rir: "11" }).errors), [
+  "weight",
+  "reps",
+  "rir",
+]);
+assert.equal(
+  invalidCompletedSets({
+    exercises: [{ setsLog: [{ done: true, weight: "", reps: "" }, { done: false, reps: "" }] }],
+  }).length,
+  1,
+);
+assert.equal(weightForDisplay("100", "lb"), "220.5");
+assert.equal(weightForStorage("220.5", "lb"), "100.017");
+assert.equal(weightForDisplay(weightForStorage("135", "lb"), "lb"), "135");
 
 const loggedSet = { weight: "", reps: "", rir: "", done: false };
 assert.equal(updateSetLogValue(loggedSet, "weight", 10), loggedSet);
