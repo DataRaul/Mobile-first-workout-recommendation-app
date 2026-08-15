@@ -2682,6 +2682,7 @@ function renderProgress() {
   const sessions = state.history;
   const summary = summarizeHistory(sessions);
   const records = exerciseProgressRecords(sessions);
+  const activeMetrics = state.activeSession ? sessionMetrics(state.activeSession) : null;
   const programmeTotal = state.activeProgram
     ? state.activeProgram.durationWeeks * state.activeProgram.daysPerWeek
     : 0;
@@ -2703,6 +2704,12 @@ function renderProgress() {
 
   $("#progressView").innerHTML = `
     <div class="hero"><div class="eyebrow">Progress</div><h1>Your training record</h1><p>Complete and partial attempts stay distinct. All data remains in this browser unless you export it.</p></div>
+    ${activeMetrics ? `<div class="card active-progress-card">
+      <div class="summary-row">
+        <div><div class="eyebrow">Workout in progress</div><h2>${escapeHtml(state.activeSession.workoutName || "Active workout")}</h2><p>${activeMetrics.completedSets}/${activeMetrics.totalSets} planned sets are saved in the active workout. Finish it or save it as partial before it appears in workout history and record totals.</p></div>
+        <button id="progressResumeActive" type="button" class="btn primary">Resume workout</button>
+      </div>
+    </div>` : ""}
     <div class="stat-grid">
       <div class="stat"><strong>${summary.completed}</strong><span>complete workouts</span></div>
       <div class="stat"><strong>${summary.partial}</strong><span>partial attempts</span></div>
@@ -2783,6 +2790,10 @@ function renderProgress() {
       renderProgress();
       toast("Workout record deleted. Programme position was unchanged.");
     };
+  });
+  $("#progressResumeActive")?.addEventListener("click", () => {
+    renderSession({ focusHeading: true });
+    view("sessionView");
   });
   $("#loadMoreHistory")?.addEventListener("click", () => {
     progressLimit += 12;

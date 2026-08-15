@@ -65,6 +65,11 @@ assert.match(app, /Exercise records and trends/);
 assert.match(app, /Correct values/);
 assert.match(app, /Delete record/);
 assert.match(app, /Load more history/);
+assert.match(app, /Workout in progress/);
+assert.match(app, /activeMetrics\.completedSets/);
+assert.match(app, /activeMetrics\.totalSets/);
+assert.match(app, /id="progressResumeActive"/);
+assert.match(app, /before it appears in workout history and record totals/);
 assert.match(styles, /\.history-session/);
 assert.match(worker, /\.\/src\/progress\.js/);
 
