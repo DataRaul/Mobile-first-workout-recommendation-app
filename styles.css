@@ -608,6 +608,12 @@ legend {
   object-fit: contain;
 }
 
+.exercise-media.media-unavailable,
+img.media-unavailable {
+  background: var(--surface-2);
+  object-fit: contain;
+}
+
 .exercise-title-row {
   display: flex;
   justify-content: space-between;
