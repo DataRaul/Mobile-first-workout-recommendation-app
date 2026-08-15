@@ -20,6 +20,7 @@ import {
   workoutDaysForProfile,
   WORKOUT_TYPES,
 } from "./programme.js";
+import { sessionCompletion } from "./session.js";
 
 let state = loadState();
 let exercises = [];
@@ -1628,12 +1629,29 @@ function renderRest() {
 
 function finishSession() {
   const session = state.activeSession;
-  const completedSets = session.exercises.flatMap((exercise) => exercise.setsLog).filter((set) => set.done).length;
-  if (completedSets === 0 && !confirm("No sets are marked complete. Finish anyway?")) return;
+  const completion = sessionCompletion(session);
+  if (
+    completion.status === "partial" &&
+    !confirm(
+      `${completion.completedSets}/${completion.totalSets} planned sets are marked complete. Save this workout as partial? It will not advance your programme.`,
+    )
+  ) {
+    return;
+  }
 
   session.completedAt = new Date().toISOString();
+  session.status = completion.status;
   state.history.push(session);
   state.activeSession = null;
+
+  if (completion.status === "partial") {
+    persist();
+    renderAll();
+    view("progressView");
+    toast("Partial workout saved without advancing your programme.");
+    return;
+  }
+
   state.activeProgram.completedSessions = (state.activeProgram.completedSessions || 0) + 1;
   state.activeProgram.nextWorkoutIndex =
     ((state.activeProgram.nextWorkoutIndex || 0) + 1) % state.activeProgram.workouts.length;
@@ -1738,7 +1756,7 @@ function renderProgress() {
               .reverse()
               .slice(0, 12)
               .map(
-                (session) => `<div class="exercise-line"><span class="number">✓</span><div><strong>${escapeHtml(session.workoutName)}</strong><small>${new Date(session.completedAt).toLocaleDateString()} · ${session.exercises.flatMap((exercise) => exercise.setsLog).filter((set) => set.done).length} sets · ${sessionVolume(session).toLocaleString()} volume</small></div></div>`,
+                (session) => `<div class="exercise-line"><span class="number">${session.status === "partial" ? "…" : "✓"}</span><div><strong>${escapeHtml(session.workoutName)}${session.status === "partial" ? " · Partial" : ""}</strong><small>${new Date(session.completedAt).toLocaleDateString()} · ${session.exercises.flatMap((exercise) => exercise.setsLog).filter((set) => set.done).length} sets · ${sessionVolume(session).toLocaleString()} volume</small></div></div>`,
               )
               .join("")
           : "<p>No completed workouts yet.</p>"
