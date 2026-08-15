@@ -1,9 +1,10 @@
-const CACHE = "workout-recommender-v3.7.0-post-review-20260815";
+const CACHE = "workout-recommender-v3.7.0-accessibility-20260815";
 
 const APP = [
   "./",
   "./index.html",
   "./styles.css",
+  "./accessibility.css",
   "./manifest.webmanifest",
   "./src/config.js",
   "./src/storage.js",
@@ -14,6 +15,7 @@ const APP = [
   "./src/schedule.js",
   "./src/session.js",
   "./src/app.js",
+  "./src/accessibility.js",
   "./data/exercise-enrichment.json",
   "./data/exercise-overrides.json",
   "./data/programming-targets.json",
