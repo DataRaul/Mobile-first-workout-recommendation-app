@@ -1135,10 +1135,18 @@ legend {
 
 @media (max-width: 480px) {
   .set-row {
-    grid-template-columns: 34px 1fr 1fr 46px;
+    grid-template-columns: 30px repeat(3, minmax(0, 1fr)) 42px;
+    gap: 4px;
   }
 
-  .rir-field {
-    display: none;
+  .set-row input {
+    min-width: 0;
+    padding: 9px 3px;
+    font-size: 0.82rem;
+  }
+
+  .set-check {
+    width: 38px;
+    height: 38px;
   }
 }
