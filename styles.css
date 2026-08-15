@@ -1276,6 +1276,21 @@ img.media-unavailable {
   font-weight: 800;
 }
 
+.toast:has(button) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toast button {
+  padding: 5px 9px;
+  border: 1px solid #111722;
+  border-radius: 8px;
+  background: transparent;
+  color: #111722;
+  font: inherit;
+}
+
 .attribution {
   width: min(980px, 100%);
   margin: 0 auto;
@@ -1375,6 +1390,70 @@ img.media-unavailable {
   margin-top: 16px;
 }
 
+.replacement-filters {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.replacement-count {
+  color: var(--muted);
+}
+
+.replacement-section {
+  display: grid;
+  gap: 10px;
+}
+
+.replacement-section h3,
+.replacement-section p {
+  margin: 0;
+}
+
+.broader-replacements {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.broader-replacements > summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.replacement-match {
+  color: var(--accent) !important;
+  font-weight: 700;
+}
+
+.replacement-preview {
+  margin-top: 8px;
+}
+
+.replacement-preview summary {
+  cursor: pointer;
+  color: var(--text);
+}
+
+.replacement-preview .instructions {
+  font-size: 0.82rem;
+}
+
+.unavailable-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.unavailable-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
 .replacement-option {
   display: grid;
   grid-template-columns: 76px 1fr auto;
@@ -1414,6 +1493,10 @@ img.media-unavailable {
     width: calc(100% - 12px);
     max-height: 96dvh;
     padding: 14px;
+  }
+
+  .replacement-filters {
+    grid-template-columns: 1fr;
   }
 
   .guide-tabs {
