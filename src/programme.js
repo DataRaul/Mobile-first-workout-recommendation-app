@@ -1338,9 +1338,9 @@ export function generateProgram(exercises, profile, state, variation = 0) {
           volumeTracker,
           selectedProgrammeGroups,
         );
-        if (alternative) {
-          // With 1,324 records available, prefer weekly variety over repeating
-          // the same exercise in another workout.
+        if (alternative && selectionQuality(alternative) <= selectionQuality(selection)) {
+          // Prefer weekly variety only when it does not downgrade the requested
+          // muscle, role, or difficulty fit. Exact programme coverage outranks novelty.
           selection = alternative;
         }
       }

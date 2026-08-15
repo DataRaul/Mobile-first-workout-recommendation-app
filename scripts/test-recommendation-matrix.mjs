@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { enrichExercise } from "../src/dataset.js";
 import {
   defaultWorkoutDays,
+  eligibleForProfile,
   generateProgram,
   getSplitPresets,
   maxComplexity,
@@ -42,7 +43,13 @@ let exerciseSlots = 0;
 let scheduleLimitedCases = 0;
 let belowCoverageGroups = 0;
 let belowCoverageWithCapacity = 0;
+let catalogueLimitedBelowCoverage = 0;
+let catalogueLimitedBelowWithCapacity = 0;
+let avoidableBelowCoverage = 0;
+let avoidableBelowWithCapacity = 0;
 const belowWithCapacityExamples = [];
+const catalogueLimitedExamples = [];
+const avoidableBelowExamples = [];
 let underfilledWorkouts = 0;
 let minimumWorkoutExercises = Number.POSITIVE_INFINITY;
 const underfilledExamples = [];
@@ -74,6 +81,9 @@ for (const level of levels) {
             };
             const program = generateProgram(exercises, profile, state, cases % 3);
             const expectedExercises = sessionMinutes <= 30 ? 5 : sessionMinutes <= 45 ? 6 : sessionMinutes <= 60 ? 7 : 8;
+            const eligibleExercises = exercises.filter((exercise) =>
+              eligibleForProfile(exercise, profile, state, maxComplexity(level)),
+            );
 
             assert.equal(program.workouts.length, days, `case ${cases}: workout-day count`);
             for (const workout of program.workouts) {
@@ -112,14 +122,16 @@ for (const level of levels) {
               );
             }
 
-            const coverage = Object.values(program.weeklyCoverage.groups);
+            const coverageEntries = Object.entries(program.weeklyCoverage.groups);
+            const coverage = coverageEntries.map(([, values]) => values);
             assert.equal(
               program.weeklyCoverage.availabilityShortfall,
               program.workouts.reduce((total, workout) => total + workout.availabilityShortfall, 0),
               `case ${cases}: weekly availability shortfall`,
             );
             if (program.weeklyCoverage.capacityLimited) scheduleLimitedCases += 1;
-            const below = coverage.filter((group) => group.status === "below").length;
+            const belowEntries = coverageEntries.filter(([, group]) => group.status === "below");
+            const below = belowEntries.length;
             belowCoverageGroups += below;
             if (!program.weeklyCoverage.capacityLimited) {
               belowCoverageWithCapacity += below;
@@ -132,14 +144,56 @@ for (const level of levels) {
                   split: preset.id,
                   equipmentPreset,
                   sessionMinutes,
-                  groups: Object.entries(program.weeklyCoverage.groups)
-                    .filter(([, group]) => group.status === "below")
-                    .map(([group, values]) => ({ group, slots: values.exerciseSlots, min: values.min })),
+                  groups: belowEntries.map(([group, values]) => ({
+                    group,
+                    slots: values.exerciseSlots,
+                    min: values.min,
+                  })),
                 });
               }
             }
+
+            for (const [group, values] of belowEntries) {
+              const exactEligible = eligibleExercises.filter(
+                (exercise) => exercise.app.group === group,
+              ).length;
+              const maxRequestedSameWorkout = Math.max(
+                0,
+                ...program.workouts.map(
+                  (workout) =>
+                    workout.exercises.filter((item) => item.requestedGroup === group).length,
+                ),
+              );
+              const catalogueLimited = exactEligible < maxRequestedSameWorkout;
+              const diagnostic = {
+                case: cases,
+                level,
+                goal,
+                days,
+                split: preset.id,
+                equipmentPreset,
+                sessionMinutes,
+                group,
+                slots: values.exerciseSlots,
+                min: values.min,
+                planned: values.plannedExerciseSlots,
+                exactEligible,
+                maxRequestedSameWorkout,
+              };
+
+              if (catalogueLimited) {
+                catalogueLimitedBelowCoverage += 1;
+                if (!program.weeklyCoverage.capacityLimited) catalogueLimitedBelowWithCapacity += 1;
+                if (catalogueLimitedExamples.length < 10) catalogueLimitedExamples.push(diagnostic);
+              } else {
+                avoidableBelowCoverage += 1;
+                if (!program.weeklyCoverage.capacityLimited) avoidableBelowWithCapacity += 1;
+                if (avoidableBelowExamples.length < 10) avoidableBelowExamples.push(diagnostic);
+              }
+            }
+
             belowCoverageBySplit[preset.id] = (belowCoverageBySplit[preset.id] || 0) + below;
-            const zeroGroups = Object.entries(program.weeklyCoverage.groups)
+            const zeroGroups = coverageEntries
               .filter(([, group]) => group.exerciseSlots === 0)
               .map(([group]) => group);
             zeroCoverageGroups += zeroGroups.length;
@@ -172,6 +226,11 @@ assert.equal(cases, 4480);
 assert.equal(zeroCoverageGroups, 0, "every planned muscle must receive direct coverage or a surfaced companion");
 assert.equal(underfilledWorkouts, 0, "preset combinations must fill their requested workout capacity");
 assert.ok(minimumWorkoutExercises >= 5, "preset workouts must retain at least five exercises");
+assert.equal(
+  avoidableBelowCoverage,
+  0,
+  "no planned muscle may fall below its direct-coverage minimum merely to increase exercise variety",
+);
 console.log(JSON.stringify({
   cases,
   workouts,
@@ -179,7 +238,13 @@ console.log(JSON.stringify({
   scheduleLimitedCases,
   belowCoverageGroups,
   belowCoverageWithCapacity,
+  catalogueLimitedBelowCoverage,
+  catalogueLimitedBelowWithCapacity,
+  avoidableBelowCoverage,
+  avoidableBelowWithCapacity,
   belowWithCapacityExamples,
+  catalogueLimitedExamples,
+  avoidableBelowExamples,
   belowCoverageBySplit,
   zeroCoverageGroups,
   zeroCoverageByGoal,
