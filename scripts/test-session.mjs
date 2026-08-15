@@ -3,6 +3,8 @@ import {
   latestRecordedSession,
   invalidCompletedSets,
   READINESS_GUIDANCE,
+  restSecondsRemaining,
+  restTimerEnd,
   sessionCompletion,
   sessionMetrics,
   updateSetLogValue,
@@ -91,6 +93,12 @@ assert.equal(
 assert.equal(weightForDisplay("100", "lb"), "220.5");
 assert.equal(weightForStorage("220.5", "lb"), "100.017");
 assert.equal(weightForDisplay(weightForStorage("135", "lb"), "lb"), "135");
+
+const timerEnd = restTimerEnd(90, 1_000);
+assert.equal(timerEnd, 91_000);
+assert.equal(restSecondsRemaining(timerEnd, 31_001), 60);
+assert.equal(restSecondsRemaining(timerEnd, 91_000), 0);
+assert.equal(restTimerEnd(0, 1_000), null);
 
 const loggedSet = { weight: "", reps: "", rir: "", done: false };
 assert.equal(updateSetLogValue(loggedSet, "weight", 10), loggedSet);
