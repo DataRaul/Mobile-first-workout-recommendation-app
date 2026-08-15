@@ -284,7 +284,7 @@ function roleCoverageText(item) {
     const requested = TRAINING_ROLE_LABELS[item.requestedRole] || labelize(item.requestedRole);
     return `same-muscle alternative to ${requested}`;
   }
-  if (item?.roleMatch === "group") return "same-muscle fallback";
+  if (item?.roleMatch === "group") return "same-muscle adaptation";
   return "";
 }
 
@@ -536,15 +536,18 @@ function weeklyVolumeHtml(program) {
       <div class="grid two">
         ${entries
           .map(([group, values]) => {
-            const statusText =
-              values.status === "below"
-                ? "Below preferred range"
-                : values.status === "above"
-                  ? "Above preferred range"
-                  : "Within preferred range";
-            return `<div class="notice">
+            const directStatus =
+              values.direct < values.min
+                ? "Direct work below preferred range"
+                : values.direct > values.max
+                  ? "Direct work above preferred range"
+                  : "Direct work within preferred range";
+            const secondaryOverlap =
+              values.direct <= values.max && values.effective > values.max;
+            return `<div class="notice ${secondaryOverlap ? "subtle" : ""}">
               <strong>${escapeHtml(labelize(group))}: ${values.effective} effective sets</strong>
-              <p>${values.direct} direct · preferred ${values.min}–${values.max} · ${statusText}</p>
+              <p>${values.direct} direct · preferred ${values.min}–${values.max} · ${directStatus}</p>
+              ${secondaryOverlap ? "<small>Additional effective sets come from secondary involvement in compound exercises; this is context, not a direct-volume warning.</small>" : ""}
             </div>`;
           })
           .join("")}
@@ -1382,6 +1385,21 @@ function bindWorkoutActions() {
   });
 }
 
+function plannerItemHasCaution(item) {
+  return (
+    item.groupMatch === "companion" ||
+    Number(item.difficultyDelta) > 0 ||
+    item.constraintNotes?.some((note) => note.status === "caution")
+  );
+}
+
+function plannerItemHasAdaptation(item) {
+  return (
+    !plannerItemHasCaution(item) &&
+    (![null, undefined, "exact"].includes(item.roleMatch) || Number(item.difficultyDelta) < 0)
+  );
+}
+
 function renderPlanner() {
   let program = state.draftProgram;
   if (!program) {
@@ -1390,15 +1408,9 @@ function renderPlanner() {
     persist();
     program = state.draftProgram;
   }
-  const issueCount = program.workouts
-    .flatMap((workout) => workout.exercises)
-    .filter(
-      (item) =>
-        item.groupMatch === "companion" ||
-        ![null, undefined, "exact"].includes(item.roleMatch) ||
-        item.difficultyDelta ||
-        item.constraintNotes?.some((note) => note.status === "caution"),
-    ).length;
+  const plannerItems = program.workouts.flatMap((workout) => workout.exercises);
+  const cautionCount = plannerItems.filter(plannerItemHasCaution).length;
+  const adaptationCount = plannerItems.filter(plannerItemHasAdaptation).length;
 
   $("#plannerView").innerHTML = `
     <div class="hero">
@@ -1445,7 +1457,8 @@ function renderPlanner() {
             <h2>Weekly routine</h2>
             <p>Open each day to review exercises. Substitutions remain inside your profile limits.</p>
           </div>
-          ${issueCount ? `<button id="reviewPlannerIssues" class="btn small" type="button">Review ${issueCount} fallback${issueCount === 1 ? "" : "s"}</button>` : ""}
+          ${cautionCount ? `<button id="reviewPlannerCautions" class="btn small" type="button">Review ${cautionCount} caution${cautionCount === 1 ? "" : "s"}</button>` : ""}
+          ${adaptationCount ? `<button id="reviewPlannerAdaptations" class="btn ghost small" type="button">View ${adaptationCount} adaptation${adaptationCount === 1 ? "" : "s"}</button>` : ""}
         </div>
         <div class="planner-workout-list">
           ${program.workouts
@@ -1494,11 +1507,17 @@ function renderPlanner() {
   });
 
   bindWorkoutActions();
-  $("#reviewPlannerIssues")?.addEventListener("click", () => {
-    $$(".planner-workout").forEach((details) => {
-      details.open = details.dataset.hasIssues === "true";
+  $("#reviewPlannerCautions")?.addEventListener("click", () => {
+    $(".planner-workout").forEach((details) => {
+      details.open = details.dataset.hasCautions === "true";
     });
-    $(".planner-workout[data-has-issues='true']")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    $(".planner-workout[data-has-cautions='true']")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  $("#reviewPlannerAdaptations")?.addEventListener("click", () => {
+    $(".planner-workout").forEach((details) => {
+      details.open = details.dataset.hasAdaptations === "true";
+    });
+    $(".planner-workout[data-has-adaptations='true']")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   $("#programmeReviewForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
