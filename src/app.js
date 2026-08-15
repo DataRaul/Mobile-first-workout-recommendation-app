@@ -25,6 +25,8 @@ import {
   latestRecordedSession,
   invalidCompletedSets,
   READINESS_GUIDANCE,
+  restSecondsRemaining,
+  restTimerEnd,
   sessionCompletion,
   sessionMetrics,
   updateSetLogValue,
@@ -45,7 +47,6 @@ let exercises = [];
 let byId = new Map();
 let browserLimit = 24;
 let restInterval = null;
-let restRemaining = 0;
 let updateAvailable = false;
 
 const $ = (selector) => document.querySelector(selector);
@@ -1538,7 +1539,7 @@ function renderToday() {
 
   $("#startSession").onclick = () => {
     if (!state.activeSession) createSession();
-    renderSession();
+    renderSession({ focusHeading: true });
     view("sessionView");
   };
   $("#previewRoutine").onclick = () => {
@@ -1624,7 +1625,7 @@ function previousPerformance(exerciseId) {
   return "No previous logged sets";
 }
 
-function renderSession() {
+function renderSession({ focusHeading = false } = {}) {
   const session = state.activeSession;
   if (!session) {
     renderToday();
@@ -1644,7 +1645,7 @@ function renderSession() {
       <div class="summary-row">
         <div>
           <div class="eyebrow">${escapeHtml(session.workoutName)} · Exercise ${session.currentIndex + 1}/${session.exercises.length}</div>
-          <h1>${escapeHtml(exercise.name)}</h1>
+          <h1 id="sessionExerciseHeading" tabindex="-1">${escapeHtml(exercise.name)}</h1>
         </div>
         <button id="exitSession" class="btn ghost small">Exit</button>
       </div>
@@ -1788,14 +1789,14 @@ function renderSession() {
     syncVisibleSetInputs();
     session.currentIndex -= 1;
     persist();
-    renderSession();
+    renderSession({ focusHeading: true });
   };
   $("#nextExercise").onclick = () => {
     syncVisibleSetInputs();
     if (session.currentIndex < session.exercises.length - 1) {
       session.currentIndex += 1;
       persist();
-      renderSession();
+      renderSession({ focusHeading: true });
     } else {
       finishSession();
     }
@@ -1830,6 +1831,12 @@ function renderSession() {
   });
 
   renderRest();
+  if (focusHeading) {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      $("#sessionExerciseHeading")?.focus();
+    });
+  }
 }
 
 function replacementContext({ scope, workoutId, itemIndex }) {
@@ -1953,7 +1960,7 @@ function replacementContext({ scope, workoutId, itemIndex }) {
           state.gym.unavailableExerciseIds.push(oldId);
         }
         persist();
-        renderSession();
+        renderSession({ focusHeading: true });
       },
       successMessage: "Exercise substituted.",
     };
@@ -2081,29 +2088,46 @@ function openReplacementPicker({
 
 function startRest(seconds) {
   clearInterval(restInterval);
-  restRemaining = seconds;
-  restInterval = setInterval(() => {
-    restRemaining -= 1;
-    renderRest();
-    if (restRemaining <= 0) {
-      clearInterval(restInterval);
-      toast("Rest complete");
-    }
-  }, 1000);
+  state.activeSession.restTimerEndsAt = restTimerEnd(seconds);
+  persist();
+  restInterval = setInterval(tickRestTimer, 1000);
+  renderRest();
+}
+
+function clearRestTimer({ notify = false } = {}) {
+  clearInterval(restInterval);
+  restInterval = null;
+  if (state.activeSession?.restTimerEndsAt) {
+    state.activeSession.restTimerEndsAt = null;
+    persist();
+  }
+  renderRest();
+  if (notify) toast("Rest complete");
+}
+
+function tickRestTimer() {
+  const remaining = restSecondsRemaining(state.activeSession?.restTimerEndsAt);
+  if (remaining <= 0) {
+    clearRestTimer({ notify: true });
+    return;
+  }
+  renderRest();
 }
 
 function renderRest() {
   const element = $("#restTimer");
+  const restRemaining = restSecondsRemaining(state.activeSession?.restTimerEndsAt);
   if (!element || restRemaining <= 0) {
     if (element) element.innerHTML = "";
+    if (restRemaining <= 0 && state.activeSession?.restTimerEndsAt) {
+      state.activeSession.restTimerEndsAt = null;
+      persist();
+    }
     return;
   }
-  element.innerHTML = `<div class="rest-timer"><strong>Rest ${Math.floor(restRemaining / 60)}:${String(restRemaining % 60).padStart(2, "0")}</strong><button id="skipRest" class="btn small">Skip</button></div>`;
-  $("#skipRest").onclick = () => {
-    clearInterval(restInterval);
-    restRemaining = 0;
-    renderRest();
-  };
+  if (!restInterval) restInterval = setInterval(tickRestTimer, 1000);
+  element.innerHTML = `<div class="rest-timer" role="timer" aria-label="Rest time remaining"><strong>Rest ${Math.floor(restRemaining / 60)}:${String(restRemaining % 60).padStart(2, "0")}</strong><button id="skipRest" type="button" class="btn small">Skip rest</button></div>`;
+  $("#skipRest").onclick = () => clearRestTimer();
 }
 
 function finishSession() {
@@ -2113,6 +2137,7 @@ function finishSession() {
     session.currentIndex = invalidSets[0].exerciseIndex;
     persist();
     renderSession();
+    requestAnimationFrame(() => $(".set-row.invalid input[aria-invalid='true']")?.focus());
     alert("A completed set has missing or invalid repetitions, weight, or RIR. Correct the highlighted set before finishing.");
     return;
   }
@@ -2128,6 +2153,9 @@ function finishSession() {
 
   session.completedAt = new Date().toISOString();
   session.status = completion.status;
+  clearInterval(restInterval);
+  restInterval = null;
+  session.restTimerEndsAt = null;
   state.history.push(session);
   state.activeSession = null;
 
@@ -2478,7 +2506,7 @@ function routeInitial() {
     view("onboardingView");
   } else if (state.activeSession) {
     renderAll();
-    renderSession();
+    renderSession({ focusHeading: true });
     view("sessionView");
   } else if (state.activeProgram) {
     renderAll();
@@ -2509,7 +2537,7 @@ function bindGlobal() {
 
   $("#brandButton").onclick = () => {
     if (state.activeSession) {
-      renderSession();
+      renderSession({ focusHeading: true });
       view("sessionView");
     } else if (state.activeProgram) {
       renderToday();
