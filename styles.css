@@ -339,6 +339,18 @@ p {
   border-color: var(--accent);
 }
 
+.weekday-picker {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.weekday-picker .option span {
+  padding: 10px 4px;
+  text-align: center;
+}
+
 label.field {
   display: grid;
   gap: 7px;
@@ -1246,6 +1258,10 @@ img.media-unavailable {
 }
 
 @media (max-width: 480px) {
+  .weekday-picker {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .set-row {
     grid-template-columns: 30px repeat(3, minmax(0, 1fr)) 42px;
     gap: 4px;
