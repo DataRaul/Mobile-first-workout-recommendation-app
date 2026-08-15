@@ -693,6 +693,10 @@ legend {
   backdrop-filter: blur(18px);
 }
 
+.bottom-nav[hidden] {
+  display: none !important;
+}
+
 .bottom-nav button {
   padding: 10px 3px;
   border: 0;
