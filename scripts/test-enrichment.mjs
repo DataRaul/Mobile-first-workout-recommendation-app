@@ -48,6 +48,16 @@ for (const record of records) {
     .map(([condition]) => condition);
   assert.deepEqual(record.cautionFlags, expectedCautions);
   assert.deepEqual(record.safetyFlags, expectedSafety);
+
+  if (record.movement === "cardio") {
+    assert.equal(record.exerciseType, "conditioning", "cardio records must remain conditioning exercises");
+    for (const tag of ["conditioning", "endurance", "general"]) {
+      assert.ok(record.goalTags.includes(tag), `cardio records must retain ${tag} goal compatibility`);
+    }
+    for (const tag of ["strength", "hypertrophy", "power", "mobility"]) {
+      assert.ok(!record.goalTags.includes(tag), `cardio records must not retain ${tag} goal compatibility`);
+    }
+  }
 }
 
 const exercise = (name, equipment = "body weight") => ({ name, equipment, instructions: { en: "" } });
@@ -75,14 +85,32 @@ assert.equal(overlay["0631"].complexity, 4, "muscle-up should remain highly expe
 assert.equal(overlay["1419"].complexity, 1, "iron cross stretch must not inherit gymnastics difficulty");
 assert.equal(overlay["0139"].movement, "vertical_pull", "narrow must not trigger the row substring");
 assert.equal(overlay["3299"].movement, "anti_extension", "planche must not be classified as mobility");
-assert.equal(overrides["0240"].movement, "horizontal_pull", "reverse fly must not be classified as a press");
-assert.equal(overrides["0602"].movement, "horizontal_pull", "machine reverse fly must not be classified as a press");
+
+const reverseFlyOverrideIds = ["0154", "0225", "0240", "0359", "0378", "0383", "0386", "0601", "0602", "0993"];
+for (const id of reverseFlyOverrideIds) {
+  assert.equal(overrides[id].movement, "horizontal_pull", `reverse-fly override ${id} must remain a horizontal pull`);
+  assert.equal(overlay[id].movement, "horizontal_pull", `regenerated reverse-fly record ${id} must remain a horizontal pull`);
+}
+assert.equal(overlay["3664"].movement, "horizontal_pull", "rule-caught reverse-fly record 3664 must remain a horizontal pull");
+
 assert.equal(overrides["1421"].group, "triceps", "modified lower-arm push-up must not fill a forearm slot");
 assert.deepEqual(overrides["1421"].trainingRoles, ["triceps_press"]);
+assert.equal(overlay["1421"].group, "triceps");
+assert.deepEqual(overlay["1421"].trainingRoles, ["triceps_press"]);
+assert.equal(overlay["1421"].setCredits.triceps, 1);
+assert.equal(overlay["1421"].programming.substitutionFamily, "triceps_press");
+
 assert.equal(overrides["3552"].movement, "cardio", "quick feet must not fill a knee-dominant strength role");
 assert.deepEqual(overrides["3552"].trainingRoles, []);
 assert.equal(overrides["3552"].exerciseType, "conditioning");
 assert.ok(!overrides["3552"].goalTags.includes("hypertrophy"));
 assert.ok(!overrides["3552"].goalTags.includes("strength"));
+assert.equal(overlay["3552"].movement, "cardio");
+assert.deepEqual(overlay["3552"].trainingRoles, []);
+assert.equal(overlay["3552"].exerciseType, "conditioning");
+assert.deepEqual([...overlay["3552"].goalTags].sort(), ["conditioning", "endurance", "general"]);
+
+assert.equal(overlay["2466"].exerciseType, "conditioning", "cardio record 2466 must remain conditioning");
+assert.ok(!overlay["2466"].goalTags.includes("hypertrophy"));
 
 console.log("Exercise enrichment integrity and regression tests passed.");
