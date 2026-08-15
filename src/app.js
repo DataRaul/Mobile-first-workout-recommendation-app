@@ -138,6 +138,172 @@ function groupCoverageText(item) {
   return `${resolved} added because ${requested} options were exhausted`;
 }
 
+const GUIDE_STEPS = [
+  {
+    title: "Create your profile",
+    text: "Choose a goal, experience ceiling, schedule, equipment, safety constraints and where the live profile is saved.",
+  },
+  {
+    title: "Review the recommendation",
+    text: "The planner balances muscle groups across the week before selecting compatible exercises and prescriptions.",
+  },
+  {
+    title: "Adjust exercises",
+    text: "Replace an exercise in the draft, accepted routine or current session without weakening active safety filters.",
+  },
+  {
+    title: "Accept your programme",
+    text: "Acceptance turns the recommendation into a stable routine for the selected programme length.",
+  },
+  {
+    title: "Complete workouts",
+    text: "Follow the suggested sets and repetitions, then record the weight, completed repetitions and RIR that apply to you.",
+  },
+  {
+    title: "Compare what comes next",
+    text: "After the programme ends, compare it with the next recommendation and carry forward performance for retained exercises.",
+  },
+];
+
+function guideGoalKeys() {
+  return Object.keys(GOALS).sort((left, right) => {
+    const recommendedDifference =
+      Number(Boolean(GOALS[right].guidance?.recommended)) -
+      Number(Boolean(GOALS[left].guidance?.recommended));
+    return recommendedDifference || 0;
+  });
+}
+
+function goalGuidanceHtml(goalKey, { compact = false } = {}) {
+  const goal = GOALS[goalKey] || GOALS.general;
+  const guidance = goal.guidance;
+  const headingLevel = compact ? 3 : 2;
+  return `
+    <article class="goal-guidance ${compact ? "goal-guidance-compact" : ""}">
+      <div class="goal-guidance-heading">
+        <div>
+          <div class="eyebrow">${escapeHtml(guidance.outcome)}</div>
+          <h${headingLevel}>${escapeHtml(goal.label)}</h${headingLevel}>
+        </div>
+        ${guidance.recommended ? '<span class="recommendation-badge">Good default</span>' : ""}
+      </div>
+      ${compact ? "" : `<p>${escapeHtml(guidance.chooseWhen)}</p>`}
+      <p>${escapeHtml(guidance.prescription)}</p>
+      <div class="chips goal-chips">
+        <span class="chip">${escapeHtml(guidance.repLabel)}</span>
+        <span class="chip">${escapeHtml(guidance.restLabel)}</span>
+        <span class="chip">${goal.weeks} weeks</span>
+      </div>
+      ${compact ? '<small>Suggested repetitions are prefilled. Weight remains blank for you to record.</small>' : ""}
+    </article>`;
+}
+
+function guideHowHtml() {
+  return `
+    <div class="guide-intro">
+      <div class="eyebrow">From profile to follow-up</div>
+      <h2 id="guideDialogTitle">How the app works</h2>
+      <p>The recommendation becomes a routine only after you review and accept it.</p>
+    </div>
+    <ol class="guide-steps">
+      ${GUIDE_STEPS.map(
+        (step, index) => `
+          <li>
+            <span class="guide-step-number">${index + 1}</span>
+            <div><h3>${escapeHtml(step.title)}</h3><p>${escapeHtml(step.text)}</p></div>
+          </li>`,
+      ).join("")}
+    </ol>
+    <div class="notice guide-notice">
+      <strong>Accepted routines stay stable.</strong>
+      <p>Changing profile inputs rebuilds the next recommendation. Completed workout history is retained.</p>
+    </div>
+    <div class="guide-basics grid three">
+      <div><strong>Difficulty</strong><span>Your experience level is a hard automatic ceiling.</span></div>
+      <div><strong>Weight</strong><span>The app suggests repetitions; you record an appropriate weight.</span></div>
+      <div><strong>Storage</strong><span>The live copy stays in this browser unless you export a backup.</span></div>
+    </div>`;
+}
+
+function guideGoalsHtml(selectedGoal, allowGoalSelection) {
+  return `
+    <div class="guide-intro">
+      <div class="eyebrow">Choose deliberately</div>
+      <h2 id="guideDialogTitle">Training goals</h2>
+      <p>Your goal changes exercise priorities, repetitions, rest, progression and programme length. It does not choose your working weight.</p>
+    </div>
+    <div class="notice"><strong>Not sure?</strong><p>General fitness is the balanced starting point. You can refine the goal when you rebuild a future recommendation.</p></div>
+    <div class="guide-goal-list">
+      ${guideGoalKeys()
+        .map((key) => {
+          const goal = GOALS[key];
+          const selected = key === selectedGoal;
+          return `
+            <article class="guide-goal-card ${selected ? "selected" : ""}">
+              ${goalGuidanceHtml(key)}
+              ${
+                allowGoalSelection
+                  ? `<button class="btn ${selected ? "primary" : ""} small" type="button" data-select-goal="${key}">${selected ? `${escapeHtml(goal.label)} selected` : `Use ${escapeHtml(goal.label)}`}</button>`
+                  : selected
+                    ? '<span class="current-goal-label">Current profile goal</span>'
+                    : ""
+              }
+            </article>`;
+        })
+        .join("")}
+    </div>`;
+}
+
+function openGuide(section = "how", { allowGoalSelection = false } = {}) {
+  const dialog = $("#guideDialog");
+  const content = $("#guideDialogContent");
+  let activeSection = section === "goals" ? "goals" : "how";
+
+  function selectedGoal() {
+    return $("#goalSelect")?.value || state.profile?.goal || "general";
+  }
+
+  function renderGuideDialog() {
+    content.innerHTML = `
+      <div class="guide-tabs" role="tablist" aria-label="Guide sections">
+        <button id="guideTabHow" type="button" role="tab" data-guide-section="how" aria-controls="guidePanel" aria-selected="${activeSection === "how"}" tabindex="${activeSection === "how" ? 0 : -1}">How it works</button>
+        <button id="guideTabGoals" type="button" role="tab" data-guide-section="goals" aria-controls="guidePanel" aria-selected="${activeSection === "goals"}" tabindex="${activeSection === "goals" ? 0 : -1}">Training goals</button>
+      </div>
+      <div id="guidePanel" class="guide-content" role="tabpanel" aria-labelledby="${activeSection === "how" ? "guideTabHow" : "guideTabGoals"}">
+        ${activeSection === "how" ? guideHowHtml() : guideGoalsHtml(selectedGoal(), allowGoalSelection)}
+      </div>`;
+
+    content.querySelectorAll("[data-guide-section]").forEach((button) => {
+      button.onclick = () => {
+        activeSection = button.dataset.guideSection;
+        renderGuideDialog();
+        content.querySelector(`[data-guide-section="${activeSection}"]`)?.focus();
+      };
+      button.onkeydown = (event) => {
+        if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+        event.preventDefault();
+        activeSection = activeSection === "how" ? "goals" : "how";
+        renderGuideDialog();
+        content.querySelector(`[data-guide-section="${activeSection}"]`)?.focus();
+      };
+    });
+
+    content.querySelectorAll("[data-select-goal]").forEach((button) => {
+      button.onclick = () => {
+        const goalSelect = $("#goalSelect");
+        if (goalSelect) {
+          goalSelect.value = button.dataset.selectGoal;
+          goalSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        dialog.close();
+      };
+    });
+  }
+
+  renderGuideDialog();
+  dialog.showModal();
+}
+
 function workoutMuscleChipsHtml(workout) {
   const stored = Array.isArray(workout?.muscleCoverage)
     ? workout.muscleCoverage
@@ -469,13 +635,18 @@ function renderOnboarding(edit = false) {
       <div class="eyebrow">${edit ? "Update profile" : "First-time setup"}</div>
       <h1>${edit ? "Update your training profile" : "Build a programme that fits you"}</h1>
       <p>Choose the goal, schedule, weekly structure, equipment and safety constraints. Every training day can have its own type and muscle emphasis.</p>
+      <button id="openHowItWorks" class="btn ghost small" type="button">How this app works</button>
     </div>
     <form id="profileForm" class="card grid">
       <div class="grid two">
         <label class="field">Name<input name="name" value="${escapeHtml(profile.name)}" placeholder="Your name"></label>
-        <label class="field">Primary goal<select name="goal">${Object.entries(GOALS)
-          .map(([key, value]) => `<option value="${key}" ${profile.goal === key ? "selected" : ""}>${value.label}</option>`)
-          .join("")}</select></label>
+        <div class="goal-field">
+          <div class="field-label-row"><label for="goalSelect">Primary goal</label><button id="compareGoals" class="text-button" type="button">Compare all goals</button></div>
+          <select id="goalSelect" name="goal">${Object.entries(GOALS)
+            .map(([key, value]) => `<option value="${key}" ${profile.goal === key ? "selected" : ""}>${value.label}</option>`)
+            .join("")}</select>
+          <div id="selectedGoalGuidance">${goalGuidanceHtml(profile.goal, { compact: true })}</div>
+        </div>
         <label class="field">Experience<select name="level">${Object.entries(LEVELS)
           .map(([key, value]) => `<option value="${key}" ${profile.level === key ? "selected" : ""}>${value}</option>`)
           .join("")}</select><small>This is a hard maximum difficulty. Simpler exercises remain valid.</small></label>
@@ -635,6 +806,13 @@ function renderOnboarding(edit = false) {
   }
 
   renderWorkoutDayEditor();
+
+  const goalSelect = $("#goalSelect");
+  goalSelect.addEventListener("change", () => {
+    $("#selectedGoalGuidance").innerHTML = goalGuidanceHtml(goalSelect.value, { compact: true });
+  });
+  $("#openHowItWorks").onclick = () => openGuide("how", { allowGoalSelection: true });
+  $("#compareGoals").onclick = () => openGuide("goals", { allowGoalSelection: true });
 
   $("#daysPerWeekSelect").addEventListener("change", (event) => {
     selectedDaysPerWeek = Number(event.target.value);
@@ -1681,6 +1859,15 @@ function renderProfile() {
         .join("<br>")}</p>
     </div>
     <div class="card">
+      <div class="eyebrow">Guide & help</div>
+      <h2>Understand your programme</h2>
+      <p>Review how recommendations become routines, or compare what each training goal changes.</p>
+      <div class="actions">
+        <button id="profileGuideHow" class="btn" type="button">How it works</button>
+        <button id="profileGuideGoals" class="btn" type="button">Training goals</button>
+      </div>
+    </div>
+    <div class="card">
       <h2>Where your data is saved</h2>
       <p><strong>Live copy:</strong> This browser on ${deviceLabel}. It is not stored in an account or automatically synced to another device.</p>
       ${lastBackup}
@@ -1705,6 +1892,8 @@ function renderProfile() {
     renderOnboarding(true);
     view("onboardingView");
   };
+  $("#profileGuideHow").onclick = () => openGuide("how");
+  $("#profileGuideGoals").onclick = () => openGuide("goals");
   $("#exportData").onclick = async () => {
     try {
       const backup = await exportState(state, { chooseLocation: true });
@@ -1817,6 +2006,7 @@ function bindGlobal() {
   };
 
   $("#closeExerciseDialog").onclick = () => $("#exerciseDialog").close();
+  $("#closeGuideDialog").onclick = () => $("#guideDialog").close();
 }
 
 async function init() {
