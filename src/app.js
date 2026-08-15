@@ -20,7 +20,7 @@ import {
   workoutDaysForProfile,
   WORKOUT_TYPES,
 } from "./programme.js";
-import { sessionCompletion } from "./session.js";
+import { sessionCompletion, updateSetLogValue } from "./session.js";
 
 let state = loadState();
 let exercises = [];
@@ -1310,11 +1310,22 @@ function renderSession() {
     $("#toggleMedia").textContent = showingAnimation ? "Show image" : "Show animation";
   };
 
+  function syncSetRow(row) {
+    const set = item.setsLog[Number(row.dataset.set)];
+    row.querySelectorAll("input[data-field]").forEach((input) => {
+      updateSetLogValue(set, input.dataset.field, input.value);
+    });
+    return set;
+  }
+
+  function syncVisibleSetInputs() {
+    $$(".set-row").forEach(syncSetRow);
+    persist();
+  }
+
   $$(".set-row input").forEach((input) => {
-    input.addEventListener("change", (event) => {
-      const row = event.target.closest(".set-row");
-      const set = item.setsLog[Number(row.dataset.set)];
-      set[event.target.dataset.field] = event.target.value;
+    input.addEventListener("input", (event) => {
+      syncSetRow(event.target.closest(".set-row"));
       persist();
     });
   });
@@ -1322,7 +1333,7 @@ function renderSession() {
   $$('[data-action="set-done"]').forEach((button) => {
     button.onclick = () => {
       const row = button.closest(".set-row");
-      const set = item.setsLog[Number(row.dataset.set)];
+      const set = syncSetRow(row);
       set.done = !set.done;
       persist();
       if (set.done) startRest(item.restSeconds);
@@ -1331,15 +1342,18 @@ function renderSession() {
   });
 
   $("#exitSession").onclick = () => {
+    syncVisibleSetInputs();
     renderToday();
     view("todayView");
   };
   $("#prevExercise").onclick = () => {
+    syncVisibleSetInputs();
     session.currentIndex -= 1;
     persist();
     renderSession();
   };
   $("#nextExercise").onclick = () => {
+    syncVisibleSetInputs();
     if (session.currentIndex < session.exercises.length - 1) {
       session.currentIndex += 1;
       persist();
