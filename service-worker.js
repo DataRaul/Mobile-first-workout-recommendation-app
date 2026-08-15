@@ -10,6 +10,7 @@ const APP = [
   "./src/dataset.js",
   "./src/enrichment-rules.js",
   "./src/programme.js",
+  "./src/schedule.js",
   "./src/app.js",
   "./data/exercise-enrichment.json",
   "./data/exercise-overrides.json",
