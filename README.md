@@ -73,6 +73,12 @@ Without `--source`, the generator reads the attributed upstream JSON URL. It val
 
 Before acceptance, the user may review or regenerate a complete programme. After **Accept programme**, it becomes a persistent 8–16-week routine. The normal home action then becomes **Start workout** or **Resume workout**, rather than generating a new random session.
 
+### Programme follow-up
+
+After the final planned session, the completed programme becomes the single previous-programme snapshot and the recommender creates the next draft from the current profile. The review screen compares both programmes by workout and training slot, showing retained, replaced, added, removed and prescription-adjusted exercises.
+
+Only exact retained exercises carry their last completed weight, repetitions and RIR into their first occurrence in the new programme. Replacement exercises show the previous performance for context but start with blank set values. When the new programme later finishes, it replaces the older snapshot, so programme chaining does not require a server or separate database.
+
 ## Substitution behaviour
 
 - **Replace for today** changes only the active session.

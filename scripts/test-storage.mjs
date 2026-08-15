@@ -17,12 +17,14 @@ const existing = loadState();
 assert.equal(existing.preferences.language, "es");
 assert.equal(existing.preferences.profileStorage, "browser");
 assert.equal(existing.preferences.lastBackupFileName, null);
+assert.equal(existing.previousProgram, null);
 
 const imported = await importState({
   text: async () => JSON.stringify({ schemaVersion: 2, profile: { name: "Imported user" } }),
 });
 assert.equal(imported.profile.name, "Imported user");
 assert.equal(imported.preferences.profileStorage, "browser");
+assert.equal(imported.previousProgram, null);
 
 let clicked = false;
 let appended = false;
