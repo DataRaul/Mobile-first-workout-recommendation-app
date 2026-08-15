@@ -177,6 +177,13 @@ const starterReplacements = replacementOptions(
 if (starterReplacements.some((exercise) => exercise.app.complexity > 1)) {
   throw new Error("profile-default substitutions must respect the hard difficulty ceiling");
 }
+let broaderReplacementSeen = false;
+for (const exercise of starterReplacements) {
+  if (exercise._replacement.groupMatch !== "exact") broaderReplacementSeen = true;
+  if (broaderReplacementSeen && exercise._replacement.groupMatch === "exact") {
+    throw new Error("exact-muscle substitutions must appear before broader companions");
+  }
+}
 
 const goals = ["strength", "hypertrophy", "power", "endurance", "general", "conditioning", "mobility"];
 const levels = ["starter", "intermediate", "advanced", "pro"];
