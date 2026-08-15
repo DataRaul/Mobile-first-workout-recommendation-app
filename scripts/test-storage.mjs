@@ -26,6 +26,62 @@ assert.equal(imported.profile.name, "Imported user");
 assert.equal(imported.preferences.profileStorage, "browser");
 assert.equal(imported.previousProgram, null);
 
+values.set(
+  "workout-recommender.state.v2",
+  JSON.stringify({
+    schemaVersion: 2,
+    profile: null,
+    draftProgram: { id: "orphan-draft" },
+    activeProgram: { id: "orphan-active" },
+    previousProgram: { id: "orphan-previous" },
+    activeSession: { programId: "orphan-active" },
+    history: [{ id: "orphan-session" }],
+  }),
+);
+const profileless = loadState();
+assert.equal(profileless.draftProgram, null);
+assert.equal(profileless.activeProgram, null);
+assert.equal(profileless.previousProgram, null);
+assert.equal(profileless.activeSession, null);
+assert.deepEqual(profileless.history, []);
+
+values.set(
+  "workout-recommender.state.v2",
+  JSON.stringify({
+    schemaVersion: 2,
+    profile: { name: "Consistent user" },
+    draftProgram: {
+      id: "draft-2",
+      predecessorProgramId: "missing-program",
+      carryForwardExerciseIds: ["exercise-1"],
+    },
+    previousProgram: { id: "previous-1" },
+    activeSession: { programId: "missing-active" },
+    draftComparison: { fromProgramId: "draft-1", toProgramId: "old-draft" },
+  }),
+);
+const reconciled = loadState();
+assert.equal(reconciled.draftProgram.predecessorProgramId, null);
+assert.deepEqual(reconciled.draftProgram.carryForwardExerciseIds, []);
+assert.equal(reconciled.activeSession, null);
+assert.equal(reconciled.draftComparison, null);
+
+values.set(
+  "workout-recommender.state.v2",
+  JSON.stringify({
+    schemaVersion: 2,
+    profile: { name: "Active user" },
+    draftProgram: { id: "stale-draft" },
+    draftComparison: { toProgramId: "stale-draft" },
+    activeProgram: { id: "active-1" },
+    activeSession: { programId: "active-1" },
+  }),
+);
+const active = loadState();
+assert.equal(active.draftProgram, null);
+assert.equal(active.draftComparison, null);
+assert.equal(active.activeSession.programId, "active-1");
+
 let clicked = false;
 let appended = false;
 globalThis.window = {};
