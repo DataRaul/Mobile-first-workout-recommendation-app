@@ -12,6 +12,12 @@ assert.match(app, /previewImportState\(file\)/);
 assert.match(app, /This will replace the live profile, programme, history and settings/);
 assert.match(app, /Import cancelled\. Live data was not changed/);
 assert.match(app, /Backup reminder/);
+assert.match(app, /Export data file/);
+assert.match(app, /Import data file/);
+assert.match(app, /Delete local data/);
+assert.match(app, /never saved to GitHub, the repository owner, an account or any server/);
+assert.match(app, /showSaveFilePicker/);
+assert.match(app, /Downloads location selected by this browser or device/);
 assert.match(styles, /\.profile-section-heading/);
 
 console.log("Profile settings, import preview and backup reminder checks passed.");
