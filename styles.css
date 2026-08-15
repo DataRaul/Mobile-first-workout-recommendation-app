@@ -1746,6 +1746,14 @@ img.media-unavailable {
 }
 
 @media (max-width: 620px) {
+  .active-progress-card .summary-row {
+    flex-direction: column;
+  }
+
+  .active-progress-card .btn {
+    width: 100%;
+  }
+
   .saved-draft-card {
     align-items: flex-start;
     flex-direction: column;
