@@ -16,6 +16,7 @@ import {
   nextWorkout,
   replacementOptions,
   refreshProgramVolume,
+  summarizeProgramChanges,
   TRAINING_ROLE_LABELS,
   workoutDaysForProfile,
   WORKOUT_TYPES,
@@ -143,7 +144,7 @@ function view(viewId) {
     button.classList.toggle("active", button.dataset.view === selectedView);
   });
   $("#bottomNav").hidden = ["loadingView", "onboardingView", "plannerView", "sessionView"].includes(viewId);
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
 
 function exerciseById(id) {
@@ -600,6 +601,30 @@ function programmeComparisonHtml(previousProgram, nextProgram) {
     </div>`;
 }
 
+function draftRegenerationHtml(program) {
+  const comparison = state.draftComparison;
+  if (!comparison || comparison.toProgramId !== program?.id) return "";
+
+  const exerciseChangeText = comparison.changedExerciseSlots
+    ? `${comparison.changedExerciseSlots} exercise slot${comparison.changedExerciseSlots === 1 ? "" : "s"} changed.`
+    : "The exercise selection stayed the same.";
+  const prescriptionText = comparison.adjusted
+    ? ` ${comparison.adjusted} prescription${comparison.adjusted === 1 ? " was" : "s were"} adjusted.`
+    : " Prescriptions stayed the same.";
+
+  return `
+    <div class="notice" role="status">
+      <strong>Compared with the recommendation you just replaced</strong>
+      <p>${exerciseChangeText}${prescriptionText}</p>
+      <div class="chips">
+        <span class="chip">${comparison.retained} retained</span>
+        <span class="chip">${comparison.replaced} replaced</span>
+        <span class="chip">${comparison.added} added</span>
+        <span class="chip">${comparison.removed} removed</span>
+      </div>
+    </div>`;
+}
+
 function generateDraftProgram(variation = 0, previousProgram = null) {
   const generated = generateProgram(exercises, state.profile, state, variation);
   return previousProgram
@@ -621,6 +646,7 @@ function reconcileStoredProgramMetrics() {
         state.draftProgram?.variation || 0,
         continuationSource,
       );
+      state.draftComparison = null;
     } catch (error) {
       console.warn("The saved draft could not be upgraded automatically.", error);
       state.draftProgram = previousDraft;
@@ -1071,6 +1097,7 @@ function renderOnboarding(edit = false) {
     try {
       const continuationSource = state.activeProgram ? null : state.previousProgram;
       state.draftProgram = generateDraftProgram(0, continuationSource);
+      state.draftComparison = null;
       if (edit) state.activeProgram = null;
       state.activeSession = null;
       persist();
@@ -1178,6 +1205,7 @@ function renderPlanner() {
   let program = state.draftProgram;
   if (!program) {
     state.draftProgram = generateDraftProgram(0, state.previousProgram);
+    state.draftComparison = null;
     persist();
     program = state.draftProgram;
   }
@@ -1218,6 +1246,7 @@ function renderPlanner() {
         </div>
         <button id="continueLater" class="btn ghost">Continue later</button>
       </div>
+      ${draftRegenerationHtml(program)}
       ${programmeComparisonHtml(state.previousProgram, program)}
       <div class="card">
         <h2>Why this fits</h2>
@@ -1292,6 +1321,7 @@ function renderPlanner() {
   $("#acceptProgram").onclick = () => {
     state.activeProgram = acceptProgram(program);
     state.draftProgram = null;
+    state.draftComparison = null;
     persist();
     renderAll();
     view("todayView");
@@ -1302,10 +1332,12 @@ function renderPlanner() {
       program.predecessorProgramId === state.previousProgram?.id
         ? state.previousProgram
         : null;
-    state.draftProgram = generateDraftProgram(
+    const nextDraft = generateDraftProgram(
       (program.variation || 0) + 1,
       continuationSource,
     );
+    state.draftProgram = nextDraft;
+    state.draftComparison = summarizeProgramChanges(program, nextDraft);
     persist();
     renderPlanner();
   };
@@ -1348,18 +1380,22 @@ function renderToday() {
     $("#continueDraft").onclick = () => {
       if (!state.draftProgram) {
         state.draftProgram = generateDraftProgram(0, state.previousProgram);
+        state.draftComparison = null;
         persist();
       }
       renderPlanner();
       view("plannerView");
     };
     $("#newDraft")?.addEventListener("click", () => {
+      const previousDraft = state.draftProgram;
       const variation = (state.draftProgram?.variation || 0) + 1;
       const continuationSource =
         state.draftProgram?.predecessorProgramId === state.previousProgram?.id
           ? state.previousProgram
           : null;
-      state.draftProgram = generateDraftProgram(variation, continuationSource);
+      const nextDraft = generateDraftProgram(variation, continuationSource);
+      state.draftProgram = nextDraft;
+      state.draftComparison = summarizeProgramChanges(previousDraft, nextDraft);
       persist();
       renderPlanner();
       view("plannerView");
@@ -1653,6 +1689,7 @@ function replacementContext({ scope, workoutId, itemIndex }) {
           candidate,
         );
         refreshProgramVolume(state.draftProgram, exercises, state.profile);
+        state.draftComparison = null;
         markDraftUpdated();
         persist();
         renderPlanner();
@@ -1943,6 +1980,7 @@ function finishSession() {
       (completedProgram.variation || 0) + 1,
       previousProgram,
     );
+    state.draftComparison = null;
     persist();
     renderAll();
     renderPlanner();
@@ -1992,6 +2030,7 @@ function renderRoutine() {
       state.activeProgram = null;
       state.activeSession = null;
       state.draftProgram = generateProgram(exercises, state.profile, state, 0);
+      state.draftComparison = null;
       persist();
       renderPlanner();
       view("plannerView");
@@ -2257,6 +2296,7 @@ function routeInitial() {
   } else {
     if (!state.draftProgram) {
       state.draftProgram = generateDraftProgram(0, state.previousProgram);
+      state.draftComparison = null;
     }
     persist();
     renderPlanner();
