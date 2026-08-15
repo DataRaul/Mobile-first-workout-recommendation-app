@@ -1,0 +1,68 @@
+name: Regenerate enrichment artifacts
+
+on:
+  push:
+    branches: [fix/enrichment-reproducibility]
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Regenerate enrichment artifacts
+        run: npm run enrichment:rerun
+      - name: Build before/after report
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import { execFileSync } from "node:child_process";
+
+          const before = JSON.parse(execFileSync("git", ["show", "HEAD:data/exercise-enrichment.json"], {
+            encoding: "utf8",
+            maxBuffer: 64 * 1024 * 1024,
+          }));
+          const after = JSON.parse(fs.readFileSync("data/exercise-enrichment.json", "utf8"));
+          const overrides = JSON.parse(fs.readFileSync("data/exercise-overrides.json", "utf8"));
+          const ids = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+          const changes = {};
+          for (const id of ids) {
+            if (JSON.stringify(before[id]) === JSON.stringify(after[id])) continue;
+            const fields = [...new Set([
+              ...Object.keys(before[id] || {}),
+              ...Object.keys(after[id] || {}),
+            ])].filter((field) => JSON.stringify(before[id]?.[field]) !== JSON.stringify(after[id]?.[field]));
+            changes[id] = Object.fromEntries(fields.map((field) => [field, {
+              before: before[id]?.[field] ?? null,
+              after: after[id]?.[field] ?? null,
+              override: overrides[id]?.[field] ?? null,
+            }]));
+          }
+          const report = {
+            changedIds: Object.keys(changes),
+            changedCount: Object.keys(changes).length,
+            overrideIds: Object.keys(overrides).sort(),
+            changes,
+          };
+          fs.writeFileSync("data/enrichment-regeneration-report.json", `${JSON.stringify(report, null, 2)}\n`);
+          console.log(JSON.stringify({ changedCount: report.changedCount, changedIds: report.changedIds }, null, 2));
+          NODE
+      - name: Commit generated artifacts for review
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/exercise-enrichment.json data/enrichment-metadata.json data/enrichment-audit.json data/enrichment-regeneration-report.json
+          if git diff --cached --quiet; then
+            echo "No generated changes."
+            exit 0
+          fi
+          git commit -m "Regenerate enrichment artifacts for review"
+          git push origin HEAD:fix/enrichment-reproducibility
