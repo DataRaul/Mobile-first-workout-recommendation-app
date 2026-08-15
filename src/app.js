@@ -22,6 +22,11 @@ import {
   WORKOUT_TYPES,
 } from "./programme.js";
 import {
+  exerciseProgressRecords,
+  historySessionStatus,
+  summarizeHistory,
+} from "./progress.js";
+import {
   latestRecordedSession,
   invalidCompletedSets,
   READINESS_GUIDANCE,
@@ -46,6 +51,7 @@ let state = loadState();
 let exercises = [];
 let byId = new Map();
 let browserLimit = 24;
+let progressLimit = 12;
 let restInterval = null;
 let updateAvailable = false;
 
@@ -173,6 +179,10 @@ function loggedWeight(value) {
 
 function countLabel(count, singular, plural = `${singular}s`) {
   return `${count} ${Number(count) === 1 ? singular : plural}`;
+}
+
+function historySessionKey(session) {
+  return String(session?.id || session?.completedAt || "");
 }
 
 function view(viewId) {
@@ -2426,40 +2436,171 @@ function renderRoutine() {
   };
 }
 
-function sessionVolume(session) {
-  return sessionMetrics(session).volume;
+function openSessionEditor(sessionId) {
+  const session = state.history.find((entry) => historySessionKey(entry) === String(sessionId));
+  if (!session) return;
+
+  $("#exerciseDialogContent").innerHTML = `
+    <div class="eyebrow">Correct recorded values</div>
+    <h2>${escapeHtml(session.workoutName || "Workout")}</h2>
+    <p>This changes the history record only. It does not rewind or advance the programme schedule.</p>
+    <form id="historyCorrectionForm" class="history-correction-form">
+      ${(session.exercises || []).map((item, exerciseIndex) => {
+        const exercise = exerciseById(item.exerciseId);
+        return `<fieldset>
+          <legend>${escapeHtml(exercise?.name || item.exerciseId)}</legend>
+          ${(item.setsLog || []).map((set, setIndex) =>
+            set.done
+              ? `<div class="history-set-edit">
+                  <strong>Set ${setIndex + 1}</strong>
+                  <label>Weight (${weightUnit()})<input type="number" min="0" step="0.1" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" data-field="weight" value="${escapeHtml(weightForDisplay(set.weight, weightUnit()))}"></label>
+                  <label>Reps / sec<input type="number" min="1" max="999" step="1" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" data-field="reps" value="${escapeHtml(set.reps)}"></label>
+                  <label>RIR<input type="number" min="0" max="10" step="1" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" data-field="rir" value="${escapeHtml(set.rir)}"></label>
+                </div>`
+              : `<p>Set ${setIndex + 1}: not completed</p>`,
+          ).join("")}
+        </fieldset>`;
+      }).join("")}
+      <div class="actions"><button type="submit" class="btn primary">Save corrections</button></div>
+    </form>`;
+  $("#exerciseDialog").showModal();
+
+  $("#historyCorrectionForm").onsubmit = (event) => {
+    event.preventDefault();
+    const corrected = JSON.parse(JSON.stringify(session));
+    $$("#historyCorrectionForm input[data-field]").forEach((input) => {
+      const set = corrected.exercises[Number(input.dataset.exerciseIndex)].setsLog[
+        Number(input.dataset.setIndex)
+      ];
+      const value = input.dataset.field === "weight"
+        ? weightForStorage(input.value, weightUnit())
+        : input.value;
+      updateSetLogValue(set, input.dataset.field, value);
+    });
+    if (invalidCompletedSets(corrected).length) {
+      alert("A completed set has an invalid value. Repetitions or seconds are required; RIR must be 0–10.");
+      return;
+    }
+    corrected.editedAt = new Date().toISOString();
+    Object.keys(session).forEach((key) => delete session[key]);
+    Object.assign(session, corrected);
+    persist();
+    $("#exerciseDialog").close();
+    renderProgress();
+    toast("Workout record corrected.");
+  };
 }
 
 function renderProgress() {
   const sessions = state.history;
-  const completedSets = sessions
-    .flatMap((session) => session.exercises.flatMap((exercise) => exercise.setsLog || []))
-    .filter((set) => set.done).length;
-  const volume = Math.round(sessions.reduce((sum, session) => sum + sessionVolume(session), 0));
+  const summary = summarizeHistory(sessions);
+  const records = exerciseProgressRecords(sessions);
+  const programmeTotal = state.activeProgram
+    ? state.activeProgram.durationWeeks * state.activeProgram.daysPerWeek
+    : 0;
+  const programmeCompleted = state.activeProgram?.completedSessions || 0;
+  const programmePercent = programmeTotal
+    ? Math.round((programmeCompleted / programmeTotal) * 100)
+    : null;
+  const shownSessions = sessions.slice().reverse().slice(0, progressLimit);
+
+  function sessionExerciseDetail(session) {
+    return (session.exercises || []).map((item) => {
+      const performed = (item.setsLog || [])
+        .filter((set) => set.done)
+        .map((set) => `${loggedWeight(set.weight)} ${weightUnit()} × ${set.reps || "—"}${set.rir ? ` · RIR ${set.rir}` : ""}`)
+        .join(", ");
+      return `<li><strong>${escapeHtml(exerciseById(item.exerciseId)?.name || item.exerciseId)}</strong><span>${escapeHtml(performed || "No completed sets")}</span></li>`;
+    }).join("");
+  }
 
   $("#progressView").innerHTML = `
-    <div class="hero"><div class="eyebrow">Progress</div><h1>Your training record</h1><p>All data stays in this browser unless you export it.</p></div>
+    <div class="hero"><div class="eyebrow">Progress</div><h1>Your training record</h1><p>Complete and partial attempts stay distinct. All data remains in this browser unless you export it.</p></div>
     <div class="stat-grid">
-      <div class="stat"><strong>${sessions.length}</strong><span>workouts</span></div>
-      <div class="stat"><strong>${completedSets}</strong><span>completed sets</span></div>
-      <div class="stat"><strong>${Number(weightForDisplay(volume, weightUnit())).toLocaleString()}</strong><span>${weightUnit()}-rep volume</span></div>
-      <div class="stat"><strong>${state.activeProgram ? currentWeek(state.activeProgram) : "—"}</strong><span>programme week</span></div>
+      <div class="stat"><strong>${summary.completed}</strong><span>complete workouts</span></div>
+      <div class="stat"><strong>${summary.partial}</strong><span>partial attempts</span></div>
+      <div class="stat"><strong>${summary.completedSets}</strong><span>completed sets</span></div>
+      <div class="stat"><strong>${Number(weightForDisplay(summary.volumeKgReps, weightUnit())).toLocaleString()}</strong><span>${weightUnit()}-rep volume</span></div>
+    </div>
+    <div class="card adherence-card">
+      <div class="summary-row">
+        <div><h2>Adherence context</h2><p><strong>${summary.completionRate}% recorded-session completion rate</strong> · ${summary.completed} complete of ${summary.recorded} recorded attempts.</p></div>
+        ${programmePercent === null ? "" : `<div class="metric"><strong>${programmePercent}%</strong><span>current programme</span></div>`}
+      </div>
+      <p>This rate is completed attempts divided by recorded attempts. The app cannot infer unrecorded missed calendar days, so it does not present that as attendance.</p>
+      ${programmePercent === null ? "" : `<div class="progress-track" role="progressbar" aria-label="Current programme completion" aria-valuemin="0" aria-valuemax="${programmeTotal}" aria-valuenow="${programmeCompleted}"><span style="width:${programmePercent}%"></span></div>`}
+    </div>
+    <div class="card">
+      <h2>Exercise records and trends</h2>
+      <p>Best values use completed sets only. Load trend compares the first and latest recorded best set for each exercise.</p>
+      ${records.length
+        ? `<div class="record-list">${records.slice(0, 10).map((record) => {
+            const change = record.loadChangeKg;
+            const trend = change === null
+              ? "More sessions needed for a trend"
+              : record.bestWeightKg
+                ? change === 0
+                  ? "Best load unchanged from first to latest"
+                  : `${change > 0 ? "+" : "−"}${weightForDisplay(Math.abs(change), weightUnit())} ${weightUnit()} first-to-latest best load`
+                : record.repChange === 0
+                  ? "Best repetitions unchanged from first to latest"
+                  : `${record.repChange > 0 ? "+" : ""}${record.repChange} first-to-latest best repetitions`;
+            return `<div class="record-row">
+              <div><strong>${escapeHtml(exerciseById(record.exerciseId)?.name || record.exerciseId)}</strong><small>${countLabel(record.sessions, "recorded session")} · ${escapeHtml(trend)}</small></div>
+              <div><span>${record.bestWeightKg ? `${weightForDisplay(record.bestWeightKg, weightUnit())} ${weightUnit()} best` : "No external load"}</span><span>${record.bestReps} max reps/sec</span><span>${Number(weightForDisplay(record.bestSetVolumeKgReps, weightUnit())).toLocaleString()} ${weightUnit()}-rep best set</span></div>
+            </div>`;
+          }).join("")}</div>`
+        : "<p>Complete at least one set to create an exercise record.</p>"}
     </div>
     <div class="card" style="margin-top:14px">
-      <h2>Recent workouts</h2>
+      <h2>Workout history</h2>
       ${
         sessions.length
-          ? sessions
-              .slice()
-              .reverse()
-              .slice(0, 12)
-              .map(
-                (session) => `<div class="exercise-line"><span class="number">${session.status === "partial" ? "…" : "✓"}</span><div><strong>${escapeHtml(session.workoutName)}${session.status === "partial" ? " · Partial" : ""}</strong><small>${new Date(session.completedAt).toLocaleDateString()} · ${session.exercises.flatMap((exercise) => exercise.setsLog).filter((set) => set.done).length} sets · ${Number(weightForDisplay(sessionVolume(session), weightUnit())).toLocaleString()} ${weightUnit()}-rep volume</small></div></div>`,
-              )
-              .join("")
-          : "<p>No completed workouts yet.</p>"
+          ? `<div class="history-list">${shownSessions.map((session) => {
+              const metrics = sessionMetrics(session);
+              const status = historySessionStatus(session);
+              return `<details class="history-session">
+                <summary><span class="number">${status === "partial" ? "…" : "✓"}</span><span><strong>${escapeHtml(session.workoutName || "Workout")} · ${status === "partial" ? "Partial" : "Complete"}</strong><small>${new Date(session.completedAt).toLocaleDateString()} · ${countLabel(metrics.completedSets, "set")} · ${Number(weightForDisplay(metrics.volume, weightUnit())).toLocaleString()} ${weightUnit()}-rep volume${session.editedAt ? " · corrected" : ""}</small></span></summary>
+                <ul class="performance-list">${sessionExerciseDetail(session)}</ul>
+                <div class="actions">
+                  <button type="button" class="btn small correct-history" data-session-id="${escapeHtml(historySessionKey(session))}">Correct values</button>
+                  <button type="button" class="btn danger small delete-history" data-session-id="${escapeHtml(historySessionKey(session))}">Delete record</button>
+                </div>
+              </details>`;
+            }).join("")}</div>
+            ${shownSessions.length < sessions.length ? `<div class="actions"><button id="loadMoreHistory" type="button" class="btn">Load more history</button></div>` : ""}`
+          : "<p>No recorded workouts yet.</p>"
       }
     </div>`;
+
+  $$(".correct-history").forEach((button) => {
+    button.onclick = () => openSessionEditor(button.dataset.sessionId);
+  });
+  $$(".delete-history").forEach((button) => {
+    button.onclick = () => {
+      const session = state.history.find(
+        (entry) => historySessionKey(entry) === String(button.dataset.sessionId),
+      );
+      if (!session) return;
+      if (
+        !confirm(
+          `Delete the recorded workout “${session.workoutName || "Workout"}”? Its logged values will be removed, but the programme schedule will not rewind.`,
+        )
+      ) {
+        return;
+      }
+      state.history = state.history.filter(
+        (entry) => historySessionKey(entry) !== String(button.dataset.sessionId),
+      );
+      persist();
+      renderProgress();
+      toast("Workout record deleted. Programme position was unchanged.");
+    };
+  });
+  $("#loadMoreHistory")?.addEventListener("click", () => {
+    progressLimit += 12;
+    renderProgress();
+  });
 }
 
 function normalize(value) {
