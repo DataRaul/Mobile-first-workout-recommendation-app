@@ -27,11 +27,27 @@ function normalizeState(value) {
   const normalized = {
     ...clone(DEFAULT_STATE),
     ...value,
+    history: Array.isArray(value.history) ? value.history : [],
+    gym: {
+      ...clone(DEFAULT_STATE.gym),
+      ...(value.gym || {}),
+      unavailableExerciseIds: Array.isArray(value.gym?.unavailableExerciseIds)
+        ? value.gym.unavailableExerciseIds
+        : [],
+      unavailableEquipment: Array.isArray(value.gym?.unavailableEquipment)
+        ? value.gym.unavailableEquipment
+        : [],
+    },
     preferences: {
       ...clone(DEFAULT_STATE.preferences),
       ...(value.preferences || {}),
     },
   };
+  const supportedLanguages = new Set(["en", "es", "it", "fr", "tr", "ru", "zh", "hi", "pl", "ko"]);
+  if (!supportedLanguages.has(normalized.preferences.language)) {
+    normalized.preferences.language = "en";
+  }
+  normalized.preferences.weightUnit = normalized.preferences.weightUnit === "lb" ? "lb" : "kg";
 
   if (!normalized.profile) {
     normalized.draftProgram = null;
@@ -157,10 +173,14 @@ export async function exportState(state, { chooseLocation = false } = {}) {
   };
 }
 
-export async function importState(file) {
+export async function previewImportState(file) {
   const parsed = JSON.parse(await file.text());
   if (parsed?.schemaVersion !== 2) throw new Error("This is not a Workout Recommender v2 export.");
-  const imported = normalizeState(parsed);
+  return normalizeState(parsed);
+}
+
+export async function importState(file) {
+  const imported = await previewImportState(file);
   saveState(imported);
   return imported;
 }
