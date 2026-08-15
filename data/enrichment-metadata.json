@@ -3,7 +3,7 @@
   "records": 1324,
   "sourceSha256": "656634224b8977b99a6d765470ee123260d4979715eaa4e7c0b7c8bb0d79f93d",
   "baselineOverlaySha256": "2bd10b7c1894e3b4b00598d6dd360843754c6b2af767f3000257afdaa310048c",
-  "overlaySha256": "5aa802248705c3dcad8ca1ed9f4575e3840a42ee37ca532a38e8df9c195d9c26",
+  "overlaySha256": "7d6d5d17fc0f9c08f3fcc1a7e4927e5747c96271178df5dda5866d4315f96e0e",
   "generator": "scripts/rerun-enrichment.mjs",
   "confidenceCounts": {
     "high": 1321,
@@ -31,11 +31,11 @@
     "cardio": 29,
     "chest": 158,
     "core": 169,
-    "forearms": 37,
+    "forearms": 36,
     "glutes": 144,
     "hamstrings": 28,
     "quads": 44,
     "shoulders": 146,
-    "triceps": 138
+    "triceps": 139
   }
 }
