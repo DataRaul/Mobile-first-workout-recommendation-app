@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 const required = [
@@ -15,8 +16,17 @@ if (missing.length) {
 JSON.parse(fs.readFileSync("manifest.webmanifest", "utf8"));
 JSON.parse(fs.readFileSync("package.json", "utf8"));
 
-for (const path of required.filter(path => path.endsWith(".js"))) {
-  execFileSync(process.execPath, ["--check", path], { stdio: "inherit" });
+const javascriptFiles = ["service-worker.js"];
+for (const directory of ["src", "scripts"]) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isFile() && [".js", ".mjs"].includes(path.extname(entry.name))) {
+      javascriptFiles.push(path.join(directory, entry.name));
+    }
+  }
+}
+
+for (const file of javascriptFiles.sort()) {
+  execFileSync(process.execPath, ["--check", file], { stdio: "inherit" });
 }
 
 console.log("Repository structure and JavaScript syntax validated.");
