@@ -69,6 +69,17 @@ Without `--source`, the generator reads the attributed upstream JSON URL. It val
 - Conditioning
 - Mobility and recovery
 
+### In-app guidance
+
+Profile creation explains the selected goal at the point of choice, including its outcome, usual repetition or timed range, rest and programme length. **Compare all goals** opens the complete seven-goal comparison without discarding unsaved profile choices.
+
+The reusable **Guide & help** dialog has two sections:
+
+- **How it works** follows the user from profile creation through recommendation review, acceptance, workout logging and the next-programme comparison;
+- **Training goals** explains when each goal is appropriate and how it changes prescriptions.
+
+The Guide remains available from Profile but does not add another primary navigation item. The bottom navigation stays limited to Today, Routine, Progress, Exercises and Profile.
+
 ## Programme flow
 
 Before acceptance, the user may review or regenerate a complete programme. After **Accept programme**, it becomes a persistent 8–16-week routine. The normal home action then becomes **Start workout** or **Resume workout**, rather than generating a new random session.
