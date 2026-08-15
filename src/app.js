@@ -601,6 +601,78 @@ function prescriptionChangeText(changes) {
     .join(" · ");
 }
 
+const PROGRAMME_REVIEW_LABELS = {
+  outcome: {
+    on_target: "On target",
+    too_easy: "Easier than expected",
+    too_hard: "Harder than expected",
+  },
+  recovery: {
+    good: "Recovered well",
+    mixed: "Recovery varied",
+    poor: "Recovery was poor",
+  },
+  symptoms: {
+    no: "No new symptoms",
+    yes: "New or worsening symptoms",
+  },
+};
+
+function programmeReviewSummary(review) {
+  if (!review) return "No end-of-block review has been saved yet.";
+  return [
+    PROGRAMME_REVIEW_LABELS.outcome[review.outcome],
+    PROGRAMME_REVIEW_LABELS.recovery[review.recovery],
+    PROGRAMME_REVIEW_LABELS.symptoms[review.symptoms],
+  ].filter(Boolean).join(" · ");
+}
+
+function programmeReviewHtml(previousProgram, nextProgram) {
+  if (
+    !previousProgram ||
+    !nextProgram ||
+    nextProgram.predecessorProgramId !== previousProgram.id
+  ) {
+    return "";
+  }
+  const review = previousProgram.review || {};
+  const selectOptions = (group, selected) =>
+    Object.entries(PROGRAMME_REVIEW_LABELS[group])
+      .map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`)
+      .join("");
+  return `<div class="card programme-review-card">
+    <div class="eyebrow">End-of-block review</div>
+    <h2>Tell the next block how the last one felt</h2>
+    <p>This keeps your experience level unchanged. Feedback only affects the starting load/repetition policy for retained exercises; replacements still start blank.</p>
+    <form id="programmeReviewForm">
+      <div class="grid three">
+        <label class="field">Block difficulty<select name="outcome" required><option value="">Choose one</option>${selectOptions("outcome", review.outcome)}</select></label>
+        <label class="field">Recovery<select name="recovery" required><option value="">Choose one</option>${selectOptions("recovery", review.recovery)}</select></label>
+        <label class="field">Pain or symptoms<select name="symptoms" required><option value="">Choose one</option>${selectOptions("symptoms", review.symptoms)}</select></label>
+      </div>
+      <label class="field">Optional reason or note<textarea name="notes" maxlength="240" placeholder="What should you remember for this next block?">${escapeHtml(review.notes || "")}</textarea></label>
+      <div class="actions"><button type="submit" class="btn primary">Save review and refresh follow-up</button></div>
+    </form>
+    <div class="notice"><strong>Protect a long-term programme chain</strong><p>This chain lives in this browser. Create a portable backup after completing each block so the comparison and performance record can be restored on another device.</p><button id="backupFollowUp" type="button" class="btn small">Create follow-up backup</button></div>
+  </div>`;
+}
+
+function continuationStartingPoint(nextProgram, previousProgram, item) {
+  if (!item?.continuation) return "";
+  const values = carriedForwardSets(nextProgram, previousProgram, item) || [];
+  const typeLabels = {
+    progressed_load: "Progressed load",
+    progressed_reps: "Progressed repetitions",
+    reduced: "Reduced starting load",
+    steady: "Retained starting values",
+  };
+  const logged = values
+    .filter((set) => set.weight || set.reps)
+    .map((set) => `${set.weight ? `${loggedWeight(set.weight)} ${weightUnit()}` : "bodyweight"} × ${set.reps || "—"}`)
+    .join(", ");
+  return `<small><strong>${escapeHtml(typeLabels[item.continuation.type] || "Starting values")}:</strong> ${escapeHtml(logged || "enter values during the workout")}. ${escapeHtml(item.continuation.reason || "")}</small>`;
+}
+
 function programmeComparisonHtml(previousProgram, nextProgram) {
   if (
     !previousProgram ||
@@ -624,11 +696,15 @@ function programmeComparisonHtml(previousProgram, nextProgram) {
         <div>
           <div class="eyebrow">Programme follow-up</div>
           <h2>Previous programme versus new recommendation</h2>
-          <p>The recommender built a new programme from your current profile. Exact retained exercises carry their last recorded weight and repetitions into their first occurrence in the new programme; replacements start blank.</p>
+          <p>The recommender built a new programme from your current profile. Retained exercises receive an explicit starting-value suggestion from the end-of-block review and recorded performance; replacements start blank.</p>
+          <p><strong>Saved review:</strong> ${escapeHtml(programmeReviewSummary(previousProgram.review))}</p>
+          ${previousProgram.review?.notes ? `<p><strong>Your note:</strong> ${escapeHtml(previousProgram.review.notes)}</p>` : ""}
         </div>
       </div>
       <div class="chips">
         <span class="chip">${comparison.summary.retained} retained</span>
+        <span class="chip">${comparison.summary.progressed} progressed</span>
+        <span class="chip">${comparison.summary.reduced} reduced</span>
         <span class="chip">${comparison.summary.replaced} replaced</span>
         <span class="chip">${comparison.summary.added} added</span>
         <span class="chip">${comparison.summary.removed} removed</span>
@@ -641,7 +717,13 @@ function programmeComparisonHtml(previousProgram, nextProgram) {
             <h3>${escapeHtml(workoutName)}</h3>
             ${entries
               .map((entry) => {
-                const label = labels[entry.status];
+                const continuationType = entry.nextItem?.continuation?.type;
+                const label =
+                  entry.status === "retained" && continuationType?.startsWith("progressed")
+                    ? { symbol: "↑", text: "Progressed" }
+                    : entry.status === "retained" && continuationType === "reduced"
+                      ? { symbol: "↓", text: "Reduced" }
+                      : labels[entry.status];
                 const previousExercise = entry.previousItem
                   ? exerciseById(entry.previousItem.exerciseId)
                   : null;
@@ -670,6 +752,7 @@ function programmeComparisonHtml(previousProgram, nextProgram) {
                     <strong>${escapeHtml(label.text)}: ${escapeHtml(title)}</strong>
                     <small>${escapeHtml(labelize(group))}${entry.changes.length ? ` · ${escapeHtml(prescriptionChangeText(entry.changes))}` : entry.status === "retained" ? ` · ${escapeHtml(prescriptionChangeText([]))}` : ""}</small>
                     ${entry.performance ? `<small>${escapeHtml(performanceText(entry.performance))}</small>` : ""}
+                    ${entry.status === "retained" ? continuationStartingPoint(nextProgram, previousProgram, entry.nextItem) : ""}
                     ${entry.status === "replaced" && entry.performance ? "<small>Previous load is shown for reference only and is not transferred to the replacement.</small>" : ""}
                   </div>
                 </div>`;
@@ -1339,6 +1422,7 @@ function renderPlanner() {
         <button id="continueLater" class="btn ghost">Continue later</button>
       </div>
       ${draftRegenerationHtml(program)}
+      ${programmeReviewHtml(state.previousProgram, program)}
       ${programmeComparisonHtml(state.previousProgram, program)}
       <div class="card">
         <h2>Why this fits</h2>
@@ -1409,6 +1493,44 @@ function renderPlanner() {
       details.open = details.dataset.hasIssues === "true";
     });
     $(".planner-workout[data-has-issues='true']")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  $("#programmeReviewForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    state.previousProgram = {
+      ...state.previousProgram,
+      review: {
+        outcome: String(form.get("outcome") || ""),
+        recovery: String(form.get("recovery") || ""),
+        symptoms: String(form.get("symptoms") || ""),
+        notes: String(form.get("notes") || "").trim().slice(0, 240),
+        reviewedAt: new Date().toISOString(),
+      },
+    };
+    state.draftProgram = generateDraftProgram(program.variation || 0, state.previousProgram);
+    state.draftComparison = null;
+    persist();
+    renderPlanner();
+    toast("End-of-block review saved. Follow-up starting values refreshed.");
+  });
+  $("#backupFollowUp")?.addEventListener("click", async () => {
+    try {
+      const backup = await exportState(state, { chooseLocation: true });
+      if (!backup) {
+        toast("Export cancelled.");
+        return;
+      }
+      state.preferences = {
+        ...state.preferences,
+        lastBackupAt: new Date().toISOString(),
+        lastBackupFileName: backup.fileName,
+        lastBackupLocation: backup.location,
+      };
+      persist();
+      toast(backupMessage(backup));
+    } catch (error) {
+      alert(`Could not export data: ${error.message}`);
+    }
   });
   $("#acceptProgram").onclick = () => {
     state.activeProgram = acceptProgram(program);
@@ -1733,7 +1855,7 @@ function renderSession({ focusHeading = false } = {}) {
         </div>
         ${constraintNotesHtml(item)}
         <p><strong>Previous:</strong> ${escapeHtml(previousPerformance(exercise.id))}</p>
-        ${item.carriedFromPrevious ? '<div class="notice"><strong>Carried forward</strong><p>The last recorded weight, repetitions and RIR are prefilled below. Edit them to match what you actually complete today.</p></div>' : ""}
+        ${item.carriedFromPrevious ? `<div class="notice"><strong>Follow-up starting values</strong><p>${escapeHtml(item.continuation?.reason || "The previous recorded values are prefilled.")} Edit weight, repetitions and RIR to match what you actually complete today.</p></div>` : ""}
         ${instructions.length
           ? `<details><summary>How to perform it</summary><ol class="instructions">${instructions.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></details>`
           : '<div class="notice"><strong>Instructions unavailable</strong><p>Use the visual only if you already know this movement. Otherwise choose a substitute with clear instructions.</p></div>'}
