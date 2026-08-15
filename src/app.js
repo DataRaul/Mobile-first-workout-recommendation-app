@@ -2530,6 +2530,16 @@ function renderRoutine() {
       ),
     );
   const nextLastSession = recentForWorkout(next.id);
+  const activeNextSession =
+    state.activeSession?.programId === program.id && state.activeSession?.workoutId === next.id
+      ? state.activeSession
+      : null;
+  const activeNextMetrics = activeNextSession ? sessionMetrics(activeNextSession) : null;
+  const nextWorkoutStatus = activeNextMetrics
+    ? `In progress · ${activeNextMetrics.completedSets}/${activeNextMetrics.totalSets} sets complete`
+    : nextLastSession
+      ? `Last attempt: ${new Date(nextLastSession.completedAt).toLocaleDateString()} · ${nextLastSession.status === "partial" ? "partial, programme did not advance" : "completed"}`
+      : "This workout has not been recorded in the current programme yet.";
 
   $("#routineView").innerHTML = `
     <div class="hero">
@@ -2544,9 +2554,7 @@ function renderRoutine() {
           <h2>${escapeHtml(next.name)}</h2>
           <p>${countLabel(next.exercises.length, "exercise")} · approximately ${program.sessionMinutes} minutes</p>
           ${workoutMuscleChipsHtml(next)}
-          <small>${nextLastSession
-            ? `Last attempt: ${new Date(nextLastSession.completedAt).toLocaleDateString()} · ${nextLastSession.status === "partial" ? "partial, programme did not advance" : "completed"}`
-            : "This workout has not been recorded in the current programme yet."}</small>
+          <small>${nextWorkoutStatus}</small>
         </div>
       </div>
       <div class="actions"><button id="routineStartNext" type="button" class="btn primary">${state.activeSession ? "Resume workout" : "Start next workout"}</button></div>
