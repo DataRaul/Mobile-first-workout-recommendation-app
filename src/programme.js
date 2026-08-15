@@ -249,6 +249,16 @@ const VOLUME_TARGETS = {
 };
 
 const HARD_COMPATIBILITY_STATUSES = new Set(["default_exclude", "needs_review"]);
+const MOBILITY_GROUP_SLOTS = [
+  "chest",
+  "back",
+  "shoulders",
+  "core",
+  "quads",
+  "hamstrings",
+  "glutes",
+  "calves",
+];
 
 const PRESET_SPLITS = {
   2: [
@@ -431,6 +441,48 @@ function slotsForWorkoutDay(day) {
   while (sequence.length < 10) push(emphasis[sequence.length % emphasis.length]);
 
   return sequence;
+}
+
+function countValues(values) {
+  return values.reduce((counts, value) => {
+    counts.set(value, (counts.get(value) || 0) + 1);
+    return counts;
+  }, new Map());
+}
+
+function planWeeklyGroupSlots(split, targetCount) {
+  const weeklyCounts = new Map();
+  const planned = split.map(() => []);
+
+  // Fill the same position across every day before moving to the next one. A
+  // short workout can therefore omit a different low-priority slot on each
+  // day instead of repeatedly dropping the final muscle in the template.
+  for (let position = 0; position < targetCount; position += 1) {
+    split.forEach((template, workoutIndex) => {
+      const sequence = template.groupSlots || [];
+      const candidates = [...new Set(sequence)];
+      if (!candidates.length) return;
+
+      const dailyCounts = countValues(planned[workoutIndex]);
+      const unseenToday = candidates.filter((group) => !dailyCounts.has(group));
+      const candidatePool = unseenToday.length ? unseenToday : candidates;
+      const sequenceFrequency = countValues(sequence);
+
+      const chosenGroup = [...candidatePool].sort((left, right) => {
+        const score = (group) =>
+          (weeklyCounts.get(group) || 0) * 12 +
+          (dailyCounts.get(group) || 0) * 18 +
+          sequence.indexOf(group) * 0.5 -
+          (sequenceFrequency.get(group) || 1) * 6;
+        return score(left) - score(right) || left.localeCompare(right);
+      })[0];
+
+      planned[workoutIndex].push(chosenGroup);
+      weeklyCounts.set(chosenGroup, (weeklyCounts.get(chosenGroup) || 0) + 1);
+    });
+  }
+
+  return planned;
 }
 
 function splitLabel(profile, workoutDays) {
@@ -683,6 +735,109 @@ function calculateWeeklyVolume(workouts, exerciseMap, selectedGroups, profile) {
     };
   }
   return summary;
+}
+
+function calculateWeeklyCoverage(workouts, exerciseMap, selectedGroups) {
+  const plannedCounts = new Map();
+  for (const workout of workouts) {
+    for (const item of workout.exercises || []) {
+      const exercise = exerciseMap.get(item.exerciseId);
+      const requestedGroup = item.requestedGroup || item.targetGroup || exercise?.app.group;
+      const plannedGroup = ["arms", "legs"].includes(requestedGroup)
+        ? exercise?.app.group || requestedGroup
+        : requestedGroup;
+      if (plannedGroup) {
+        plannedCounts.set(plannedGroup, (plannedCounts.get(plannedGroup) || 0) + 1);
+      }
+    }
+  }
+  const actualGroups = workouts.flatMap((workout) =>
+    (workout.exercises || []).map((item) => {
+      const exercise = exerciseMap.get(item.exerciseId);
+      return exercise?.app.group || item.targetGroup || item.requestedGroup;
+    }),
+  );
+  const exactPlannedGroups = [
+    ...[...selectedGroups].filter((group) => !["arms", "legs"].includes(group)),
+    ...plannedCounts.keys(),
+  ];
+  const groups = [...new Set([...exactPlannedGroups, ...actualGroups])].filter(Boolean);
+  const totalExerciseSlots = workouts.reduce(
+    (total, workout) => total + (workout.exercises || []).length,
+    0,
+  );
+  const requestedExerciseSlots = workouts.reduce(
+    (total, workout) =>
+      total + (Number(workout.requestedExerciseCount) || (workout.exercises || []).length),
+    0,
+  );
+  const averageSlots = groups.length ? totalExerciseSlots / groups.length : 0;
+  const minimumPerGroup = averageSlots >= 2 ? 2 : 1;
+  const maximumPerGroup = averageSlots >= 3 ? 3 : 2;
+  const summary = {};
+
+  for (const group of groups) {
+    const exerciseIds = new Set();
+    const workoutIds = new Set();
+    let exerciseSlots = 0;
+    let directSets = 0;
+
+    for (const workout of workouts) {
+      for (const item of workout.exercises || []) {
+        const exercise = exerciseMap.get(item.exerciseId);
+        if (!exercise || exercise.app.group !== group) continue;
+        exerciseSlots += 1;
+        directSets += Number(item.sets) || 0;
+        exerciseIds.add(item.exerciseId);
+        workoutIds.add(workout.id);
+      }
+    }
+
+    const plannedExerciseSlots = plannedCounts.get(group) || 0;
+    const groupMinimum = plannedExerciseSlots >= 2 ? 2 : 1;
+    const groupMaximum =
+      plannedExerciseSlots >= 3 ? Math.max(3, plannedExerciseSlots) : 2;
+
+    summary[group] = {
+      exerciseSlots,
+      uniqueExercises: exerciseIds.size,
+      sessions: workoutIds.size,
+      directSets,
+      plannedExerciseSlots,
+      min: groupMinimum,
+      max: groupMaximum,
+      status:
+        exerciseSlots < groupMinimum
+          ? "below"
+          : exerciseSlots > groupMaximum
+            ? "above"
+            : "within",
+    };
+  }
+
+  for (const workout of workouts) {
+    const perGroup = new Map();
+    for (const item of workout.exercises || []) {
+      const exercise = exerciseMap.get(item.exerciseId);
+      const group = exercise?.app.group || item.targetGroup || item.requestedGroup;
+      if (!group) continue;
+      perGroup.set(group, (perGroup.get(group) || 0) + 1);
+    }
+    workout.muscleCoverage = [...perGroup].map(([group, exercises]) => ({
+      group,
+      exercises,
+    }));
+  }
+
+  return {
+    totalExerciseSlots,
+    requestedExerciseSlots,
+    availabilityShortfall: Math.max(0, requestedExerciseSlots - totalExerciseSlots),
+    minimumPerGroup,
+    maximumPerGroup,
+    groups: summary,
+    capacityLimited: minimumPerGroup < 2,
+  };
 }
 
 function rebalanceProgrammeSets(workouts, exerciseMap, selectedGroups, profile) {
@@ -972,6 +1127,10 @@ function prescription(profile, selection, index, slot) {
     reps = "6–10";
     restSeconds = 90;
   }
+  if (profile.goal === "hypertrophy") {
+    const type = exercise.app.exerciseType || "accessory";
+    reps = ["main_lift", "compound_accessory"].includes(type) ? "6–10" : "10–15";
+  }
   if (profile.goal === "power" && !exercise.app.goalTags.includes("power")) {
     sets = 3;
     reps = "6–10";
@@ -1017,12 +1176,8 @@ function progression(goal) {
 
 export function generateProgram(exercises, profile, state, variation = 0) {
   const profileComplexity = maxComplexity(profile.level);
-  const generationCeiling =
-    profileComplexity > 1 && profileComplexity < 4
-      ? profileComplexity + 1
-      : profileComplexity;
   const pool = exercises.filter((exercise) =>
-    eligibleForProfile(exercise, profile, state, generationCeiling),
+    eligibleForProfile(exercise, profile, state, profileComplexity),
   );
   if (pool.length < 20) {
     throw new Error(
@@ -1030,9 +1185,23 @@ export function generateProgram(exercises, profile, state, variation = 0) {
     );
   }
 
-  const workoutDays = workoutDaysForProfile(profile);
+  const requestedWorkoutDays = workoutDaysForProfile(profile);
+  const mobilityPresetAdapted =
+    profile.goal === "mobility" && profile.splitPreset !== "custom";
+  const workoutDays = mobilityPresetAdapted
+    ? requestedWorkoutDays.map((day, index) => ({
+        ...day,
+        name: `Full-body mobility ${String.fromCharCode(65 + index)}`,
+        type: "full_body",
+        emphasis: [],
+        strictFocus: false,
+        goalAdapted: true,
+      }))
+    : requestedWorkoutDays;
   const split = workoutDays.map((day) => {
-    const groupSlots = slotsForWorkoutDay(day);
+    const groupSlots = day.goalAdapted
+      ? [...MOBILITY_GROUP_SLOTS]
+      : slotsForWorkoutDay(day);
     return {
       name: day.name,
       type: day.type,
@@ -1042,26 +1211,29 @@ export function generateProgram(exercises, profile, state, variation = 0) {
       allowedGroups: [...new Set(groupSlots)],
     };
   });
+  const targetCount =
+    profile.sessionMinutes <= 30 ? 5 : profile.sessionMinutes <= 45 ? 6 : profile.sessionMinutes <= 60 ? 7 : 8;
+  const plannedGroupSlots = planWeeklyGroupSlots(split, targetCount);
+  split.forEach((template, index) => {
+    template.plannedGroupSlots = plannedGroupSlots[index];
+  });
+
   const random = rng(hashString(JSON.stringify(profile) + variation));
   const usedAcross = new Set();
   const selectedProgrammeGroups = new Set(
-    workoutDays.flatMap((day) =>
-      day.strictFocus || day.type === "custom"
-        ? day.emphasis
-        : slotsForWorkoutDay(day),
-    ),
+    plannedGroupSlots.flat(),
   );
   const volumeTracker = {};
-  const targetCount =
-    profile.sessionMinutes <= 30 ? 5 : profile.sessionMinutes <= 45 ? 6 : profile.sessionMinutes <= 60 ? 7 : 8;
 
   const workouts = split.map((template, workoutIndex) => {
     const used = new Set();
     const selectedGroupOccurrences = new Map();
-    const groupSlots = [...template.groupSlots];
+    const groupSlots = [...template.plannedGroupSlots];
     const slotAttempts = Math.max(18, targetCount * 4);
     while (groupSlots.length < slotAttempts) {
-      groupSlots.push(groupSlots[groupSlots.length % template.groupSlots.length]);
+      groupSlots.push(
+        groupSlots[groupSlots.length % template.plannedGroupSlots.length],
+      );
     }
     const slots = addTrainingRoles(groupSlots);
 
@@ -1128,6 +1300,8 @@ export function generateProgram(exercises, profile, state, variation = 0) {
       emphasis: template.emphasis,
       strictFocus: template.strictFocus,
       allowedGroups: template.allowedGroups,
+      requestedExerciseCount: targetCount,
+      availabilityShortfall: Math.max(0, targetCount - chosen.length),
       exercises: chosen.map(({ selection, slot }, index) =>
         prescription(profile, selection, index, slot),
       ),
@@ -1147,6 +1321,11 @@ export function generateProgram(exercises, profile, state, variation = 0) {
     selectedProgrammeGroups,
     profile,
   );
+  const weeklyCoverage = calculateWeeklyCoverage(
+    workouts,
+    exerciseMap,
+    selectedProgrammeGroups,
+  );
 
   const config = GOALS[profile.goal] || GOALS.general;
   const durationWeeks = Number(profile.durationWeeks || config.weeks);
@@ -1161,12 +1340,20 @@ export function generateProgram(exercises, profile, state, variation = 0) {
     durationWeeks,
     daysPerWeek: Number(profile.daysPerWeek),
     sessionMinutes: Number(profile.sessionMinutes),
-    splitName: splitLabel(profile, workoutDays),
+    splitName: mobilityPresetAdapted
+      ? "Full-body mobility rotation"
+      : splitLabel(profile, workoutDays),
+    structureNote: mobilityPresetAdapted
+      ? "The selected resistance-training preset was adapted to a full-body mobility rotation because push, pull and limb-isolation splits do not map reliably to the available mobility catalogue. Choose a custom structure to require specific mobility muscles."
+      : "",
     workoutDays,
     progression: progression(profile.goal),
     weeklyVolume,
+    weeklyCoverage,
+    coverageMethod: "Exercise slots are balanced across the full week. Complete-body plans target two to three direct exercise slots per planned muscle when the selected days and session length provide enough capacity.",
     volumeMethod: "Primary sets count 1.0; strong secondary work counts 0.5; stabilising work counts 0.25.",
-    enrichmentVersion: "3.0.0",
+    enrichmentVersion: "3.1.0",
+    plannerVersion: "3.3.0",
     reviewWeeks: [4, 8, durationWeeks].filter(
       (value, index, values) => value <= durationWeeks && values.indexOf(value) === index,
     ),
@@ -1189,6 +1376,11 @@ export function refreshProgramVolume(program, exercises, profile) {
     exerciseMap,
     selectedGroups,
     profile,
+  );
+  program.weeklyCoverage = calculateWeeklyCoverage(
+    program.workouts || [],
+    exerciseMap,
+    selectedGroups,
   );
   return program.weeklyVolume;
 }
@@ -1421,8 +1613,7 @@ export function replacementOptions(
   if (!current) return [];
 
   const profileDifficulty = maxComplexity(profile.level);
-  const requestedDifficulty =
-    difficulty === "all" ? "all" : difficulty === "profile" ? profileDifficulty : Number(difficulty);
+  const requestedDifficulty = Number(difficulty);
   const allowed = allowedEquipment(profile);
   const replacementTarget = targetGroup || current.app.group;
   const originalRequestedGroup = requestedGroup || replacementTarget;
@@ -1458,7 +1649,13 @@ export function replacementOptions(
       ) {
         return false;
       }
-      if (requestedDifficulty !== "all" && exercise.app.complexity !== requestedDifficulty) {
+      if (difficulty === "profile" && exercise.app.complexity > profileDifficulty) {
+        return false;
+      }
+      if (
+        !["all", "profile"].includes(difficulty) &&
+        exercise.app.complexity !== requestedDifficulty
+      ) {
         return false;
       }
       return groupOrder.some((group) => groupMatches(exercise, group));

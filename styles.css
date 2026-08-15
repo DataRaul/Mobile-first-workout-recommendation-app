@@ -385,6 +385,73 @@ legend {
   margin: 12px 0;
 }
 
+.muscle-coverage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.muscle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid rgba(142, 227, 178, 0.22);
+  border-radius: 999px;
+  background: rgba(142, 227, 178, 0.07);
+  color: var(--text);
+  font-size: 0.76rem;
+}
+
+.muscle-chip strong {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(142, 227, 178, 0.18);
+  color: var(--accent);
+  font-size: 0.7rem;
+}
+
+.coverage-grid {
+  margin-top: 14px;
+}
+
+.coverage-item {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.coverage-item > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.coverage-item span,
+.coverage-item small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.coverage-item p {
+  margin: 7px 0 3px;
+}
+
+.coverage-below {
+  border-left-color: var(--warning);
+}
+
+.coverage-above {
+  border-left-color: #d7a8ff;
+}
+
 .programme-workout {
   margin-top: 14px;
   padding-top: 14px;
