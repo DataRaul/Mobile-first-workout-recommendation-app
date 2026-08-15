@@ -1,4 +1,4 @@
-const CACHE = "workout-recommender-v3.4-role-quality-20260815";
+const CACHE = "workout-recommender-v3.5-offline-status-20260815";
 
 const APP = [
   "./",
@@ -69,8 +69,20 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches
-      .match(event.request)
-      .then((cached) => cached || fetch(event.request)),
+    caches.open(CACHE).then(async (cache) => {
+      try {
+        const response = await fetch(event.request);
+        if (response.ok) await cache.put(event.request, response.clone());
+        return response;
+      } catch {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        if (event.request.mode === "navigate") return caches.match("./index.html");
+        return new Response("Offline resource unavailable", {
+          status: 503,
+          headers: { "Content-Type": "text/plain" },
+        });
+      }
+    }),
   );
 });

@@ -28,6 +28,7 @@ let byId = new Map();
 let browserLimit = 24;
 let restInterval = null;
 let restRemaining = 0;
+let updateAvailable = false;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -58,6 +59,63 @@ function toast(message) {
   element._timer = setTimeout(() => {
     element.hidden = true;
   }, 3000);
+}
+
+function updateDatasetBadge() {
+  const badge = $("#datasetBadge");
+  if (!exercises.length) {
+    badge.textContent = navigator.onLine ? "Loading exercises…" : "Offline · checking saved copy";
+    return;
+  }
+  badge.textContent = updateAvailable
+    ? "Update ready · reopen app"
+    : `${exercises.length.toLocaleString()} exercises${navigator.onLine ? "" : " · offline copy"}`;
+  badge.classList.add("ready");
+}
+
+async function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.register("./service-worker.js");
+    if (registration.waiting) {
+      updateAvailable = true;
+      updateDatasetBadge();
+    }
+    registration.addEventListener("updatefound", () => {
+      const worker = registration.installing;
+      worker?.addEventListener("statechange", () => {
+        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+          updateAvailable = true;
+          updateDatasetBadge();
+          toast("A new app version is ready. Reopen the app when convenient.");
+        }
+      });
+    });
+    await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((resolve) => setTimeout(resolve, 2500)),
+    ]);
+  } catch {
+    // The app can still run online when installation is unavailable.
+  }
+}
+
+function installMediaFallback() {
+  const fallback = `data:image/svg+xml,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 440"><rect width="640" height="440" fill="#171c24"/><text x="320" y="220" fill="#aab4c3" font-family="system-ui,sans-serif" font-size="24" text-anchor="middle">Exercise visual unavailable</text></svg>',
+  )}`;
+  document.addEventListener(
+    "error",
+    (event) => {
+      const image = event.target;
+      if (!(image instanceof HTMLImageElement) || image.dataset.mediaFallback) return;
+      image.dataset.mediaFallback = "true";
+      image.classList.add("media-unavailable");
+      image.alt = `${image.alt || "Exercise"} — visual unavailable`;
+      image.src = fallback;
+    },
+    true,
+  );
 }
 
 function currentDeviceLabel() {
@@ -2047,18 +2105,24 @@ function bindGlobal() {
 
 async function init() {
   bindGlobal();
+  installMediaFallback();
+  window.addEventListener("online", updateDatasetBadge);
+  window.addEventListener("offline", updateDatasetBadge);
+  await registerServiceWorker();
   try {
     exercises = await loadExercises();
     byId = new Map(exercises.map((exercise) => [String(exercise.id), exercise]));
     reconcileStoredProgramMetrics();
-    $("#datasetBadge").textContent = `${exercises.length.toLocaleString()} exercises`;
-    $("#datasetBadge").classList.add("ready");
+    updateDatasetBadge();
     routeInitial();
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-    }
   } catch (error) {
-    $("#loadingView").innerHTML = `<div><h1>Exercise library unavailable</h1><p>${escapeHtml(error.message)}</p><button class="btn primary" onclick="location.reload()">Retry</button></div>`;
+    const offline = !navigator.onLine;
+    $("#loadingView").innerHTML = `<div><h1>Exercise library unavailable</h1><p>${
+      offline
+        ? "This device is offline and does not yet have a complete saved exercise library. Connect once to finish setup."
+        : `The exercise source could not be reached. ${escapeHtml(error.message)}`
+    }</p><p>Your profile data has not been changed.</p><button id="retryDataset" class="btn primary">Retry</button></div>`;
+    $("#retryDataset").onclick = () => location.reload();
   }
 }
 
