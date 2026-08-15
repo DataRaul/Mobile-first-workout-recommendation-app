@@ -73,6 +73,22 @@ Without `--source`, the generator reads the attributed upstream JSON URL. It val
 
 Before acceptance, the user may review or regenerate a complete programme. After **Accept programme**, it becomes a persistent 8–16-week routine. The normal home action then becomes **Start workout** or **Resume workout**, rather than generating a new random session.
 
+### Weekly muscle coverage
+
+The recommender plans muscle slots across the complete week before choosing exercises. This prevents a short workout from repeatedly dropping the final muscle in a day template and makes the trade-off between training days, session length and direct muscle work visible.
+
+- complete-body plans target two to three direct exercise slots per planned muscle when weekly capacity allows;
+- 30-minute and otherwise capacity-limited schedules display the reduced direct-coverage range explicitly;
+- every workout displays its recommended muscle groups and exercise count per group;
+- a weekly coverage summary reports direct exercise slots, unique exercises, days trained and direct sets;
+- the existing effective-set summary separately counts primary, strong-secondary and stabilising work;
+- the selected experience level is a hard maximum: the automatic generator and default substitutions may use simpler exercises but never a harder level;
+- if equipment, goal and safety filters exhaust safe distinct candidates, the programme shows the shortfall instead of weakening the filters.
+
+Preset mobility programmes use a full-body mobility rotation instead of forcing strength-oriented Push/Pull/Legs or limb-isolation slots onto a catalogue that does not contain equivalent mobility work for every muscle. Explicit custom muscle structures remain strict.
+
+Repetition prescriptions are prefilled from the selected objective while weight remains blank. Hypertrophy uses 6–10 repetitions for main or compound lifts and 10–15 for accessory or isolation work. Strength and power retain lower main-movement ranges with 6–10-repetition accessory fallbacks; endurance, general fitness, conditioning and mobility retain their goal-specific repetition or timed ranges.
+
 ### Programme follow-up
 
 After the final planned session, the completed programme becomes the single previous-programme snapshot and the recommender creates the next draft from the current profile. The review screen compares both programmes by workout and training slot, showing retained, replaced, added, removed and prescription-adjusted exercises.
@@ -97,6 +113,12 @@ The 1,324-exercise JSON and media are loaded from the source repository and can 
 
 ```bash
 npm run validate
+```
+
+The default suite includes a deterministic 4,480-combination fixture matrix. The same matrix can be run against a downloaded copy of the attributed 1,324-exercise source:
+
+```bash
+npm run test:matrix -- --source /path/to/exercises.json
 ```
 
 ## Medical disclaimer

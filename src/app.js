@@ -106,13 +106,7 @@ function complexityText(exercise) {
 
 function profileComplexityText() {
   const target = maxComplexity(state.profile?.level);
-  const fallback =
-    target > 1 && target < 4
-      ? " · simpler exercises may fill missing roles; at most one level higher"
-      : target === 4
-        ? " · simpler exercises may fill missing roles"
-        : "";
-  return `${LEVELS[state.profile?.level] || "Starter"} profile · target ${target}/4 (${COMPLEXITY_LABELS[target]})${fallback}`;
+  return `${LEVELS[state.profile?.level] || "Starter"} profile · maximum ${target}/4 (${COMPLEXITY_LABELS[target]}) · simpler exercises may fill roles`;
 }
 
 function trainingRoleText(item) {
@@ -123,7 +117,7 @@ function trainingRoleText(item) {
 function difficultyFallbackText(item) {
   if (!item?.difficultyDelta) return "";
   if (item.difficultyDelta > 0) {
-    return "one level above profile for balanced coverage";
+    return "above the current profile maximum; rebuild this saved programme";
   }
   return Math.abs(item.difficultyDelta) === 1
     ? "one level below profile for balanced coverage"
@@ -142,6 +136,33 @@ function groupCoverageText(item) {
   const requested = labelize(item.requestedGroup || "selected muscle");
   const resolved = labelize(item.targetGroup || "companion muscle");
   return `${resolved} added because ${requested} options were exhausted`;
+}
+
+function workoutMuscleChipsHtml(workout) {
+  const stored = Array.isArray(workout?.muscleCoverage)
+    ? workout.muscleCoverage
+    : [];
+  const coverage = stored.length
+    ? stored
+    : [...countBy((workout?.exercises || []).map((item) => item.targetGroup || item.requestedGroup).filter(Boolean))]
+        .map(([group, exercises]) => ({ group, exercises }));
+  if (!coverage.length) return "";
+
+  return `<div class="muscle-coverage" aria-label="Muscles trained">
+    ${coverage
+      .map(
+        ({ group, exercises }) =>
+          `<span class="muscle-chip">${escapeHtml(labelize(group))}<strong>${Number(exercises) || 1}</strong></span>`,
+      )
+      .join("")}
+  </div>`;
+}
+
+function countBy(values) {
+  return values.reduce((counts, value) => {
+    counts.set(value, (counts.get(value) || 0) + 1);
+    return counts;
+  }, new Map());
 }
 
 function constraintNotesHtml(item, compact = false) {
@@ -174,7 +195,7 @@ function weeklyVolumeHtml(program) {
     <div class="card">
       <div class="summary-row">
         <div>
-          <h2>Weekly muscle-volume check</h2>
+          <h2>Weekly set-volume check</h2>
           <p>Effective sets include full credit for the primary muscle and fractional credit for meaningful secondary work.</p>
         </div>
       </div>
@@ -195,6 +216,42 @@ function weeklyVolumeHtml(program) {
           .join("")}
       </div>
       <p><small>${escapeHtml(program.volumeMethod || "")}</small></p>
+    </div>`;
+}
+
+function weeklyCoverageHtml(program) {
+  const coverage = program?.weeklyCoverage;
+  const entries = Object.entries(coverage?.groups || {});
+  if (!entries.length) return "";
+
+  return `
+    <div class="card">
+      <div class="summary-row">
+        <div>
+          <h2>Weekly muscle coverage</h2>
+          <p>${escapeHtml(program.coverageMethod || "Direct exercise slots are distributed across the selected training week.")}</p>
+        </div>
+        <div class="metric"><strong>${coverage.totalExerciseSlots}</strong><span>weekly exercise slots</span></div>
+      </div>
+      ${coverage.capacityLimited ? '<div class="notice"><strong>Schedule-limited coverage</strong><p>This combination of days and session length cannot provide two direct exercise slots for every planned muscle. Compound exercises and effective-set credit maintain broader coverage; add time or a training day for more direct work.</p></div>' : ""}
+      ${coverage.availabilityShortfall ? `<div class="notice"><strong>Safe-candidate limit</strong><p>The active difficulty, equipment, goal and safety filters provide ${coverage.totalExerciseSlots} of ${coverage.requestedExerciseSlots} requested weekly slots. The planner leaves the remaining slots empty instead of exceeding your profile difficulty or repeating an exercise inside one workout.</p></div>` : ""}
+      <div class="grid two coverage-grid">
+        ${entries
+          .map(([group, values]) => {
+            const statusText =
+              values.status === "below"
+                ? "Below planned coverage"
+                : values.status === "above"
+                  ? "Above planned coverage"
+                  : "Within planned coverage";
+            return `<div class="coverage-item coverage-${values.status}">
+              <div><strong>${escapeHtml(labelize(group))}</strong><span>${escapeHtml(statusText)}</span></div>
+              <p>${values.exerciseSlots} direct exercise ${values.exerciseSlots === 1 ? "slot" : "slots"} · ${values.uniqueExercises} unique · ${values.sessions} ${values.sessions === 1 ? "day" : "days"}</p>
+              <small>${values.directSets} direct sets · planned ${values.min}–${values.max} exercise slots</small>
+            </div>`;
+          })
+          .join("")}
+      </div>
     </div>`;
 }
 
@@ -303,6 +360,34 @@ function generateDraftProgram(variation = 0, previousProgram = null) {
     : generated;
 }
 
+function reconcileStoredProgramMetrics() {
+  if (!state.profile || !exercises.length) return;
+
+  if (state.draftProgram?.plannerVersion !== "3.3.0") {
+    const previousDraft = state.draftProgram;
+    const continuationSource =
+      state.draftProgram?.predecessorProgramId === state.previousProgram?.id
+        ? state.previousProgram
+        : null;
+    try {
+      state.draftProgram = generateDraftProgram(
+        state.draftProgram?.variation || 0,
+        continuationSource,
+      );
+    } catch (error) {
+      console.warn("The saved draft could not be upgraded automatically.", error);
+      state.draftProgram = previousDraft;
+      refreshProgramVolume(state.draftProgram, exercises, state.profile);
+    }
+  }
+
+  if (state.activeProgram) {
+    refreshProgramVolume(state.activeProgram, exercises, state.profile);
+  }
+
+  persist();
+}
+
 function applyReplacementMetadata(
   item,
   replacementId,
@@ -393,7 +478,7 @@ function renderOnboarding(edit = false) {
           .join("")}</select></label>
         <label class="field">Experience<select name="level">${Object.entries(LEVELS)
           .map(([key, value]) => `<option value="${key}" ${profile.level === key ? "selected" : ""}>${value}</option>`)
-          .join("")}</select></label>
+          .join("")}</select><small>This is a hard maximum difficulty. Simpler exercises remain valid.</small></label>
         <label class="field">Training days per week<select name="daysPerWeek" id="daysPerWeekSelect">${[2, 3, 4, 5, 6]
           .map((number) => `<option value="${number}" ${selectedDaysPerWeek === number ? "selected" : ""}>${number}</option>`)
           .join("")}</select></label>
@@ -672,6 +757,8 @@ function workoutHtml(workout, { editable = false, scope = "view" } = {}) {
         <div>
           <h3>${escapeHtml(workout.name)}</h3>
           <p>${workout.exercises.length} exercises · approximately ${state.profile.sessionMinutes} minutes${workout.emphasis?.length ? ` · ${workout.strictFocus ? "muscles" : "focus"}: ${workout.emphasis.map(labelize).join(", ")}` : ""}</p>
+          ${workoutMuscleChipsHtml(workout)}
+          ${workout.availabilityShortfall ? `<p class="constraint-note">${workout.exercises.length} of ${workout.requestedExerciseCount} requested slots filled. Current filters contain no additional safe, distinct match.</p>` : ""}
         </div>
       </div>
       ${workout.exercises
@@ -748,9 +835,11 @@ function renderPlanner() {
     ${programmeComparisonHtml(state.previousProgram, program)}
     <div class="card">
       <h2>Why this fits</h2>
-      <p>The routine uses your goal, selected muscles, available equipment and active safety filters. It also balances complementary training roles inside each muscle group instead of repeating redundant movements.</p>
+      <p>The routine first balances direct muscle slots across the selected week, then chooses complementary training roles, equipment-compatible exercises and goal-specific prescriptions. Your experience level is never exceeded automatically.</p>
+      ${program.structureNote ? `<div class="notice"><strong>Goal-aware structure</strong><p>${escapeHtml(program.structureNote)}</p></div>` : ""}
       <div class="notice"><strong>Progression:</strong> ${escapeHtml(program.progression)}</div>
     </div>
+    ${weeklyCoverageHtml(program)}
     ${weeklyVolumeHtml(program)}
     <div class="card">
       <div class="summary-row">
@@ -869,6 +958,7 @@ function renderToday() {
           <div class="eyebrow">Week ${week} of ${program.durationWeeks}</div>
           <h2>${escapeHtml(state.activeSession?.workoutName || workout.name)}</h2>
           <p>${workout.exercises.length} exercises · approximately ${program.sessionMinutes} minutes</p>
+          ${workoutMuscleChipsHtml(workout)}
         </div>
         <div class="metric"><strong>${completedSessions}/${totalSessions}</strong><span>sessions</span></div>
       </div>
@@ -1233,12 +1323,13 @@ function openReplacementPicker({
   let selectedDifficulty = "profile";
 
   const difficultyOptions = [
-    { value: "profile", label: `${LEVELS[state.profile.level]} — profile default` },
-    { value: "1", label: "Starter — complexity 1/4" },
-    { value: "2", label: "Intermediate — complexity 2/4" },
-    { value: "3", label: "Advanced — complexity 3/4" },
-    { value: "4", label: "Expert — complexity 4/4" },
-    { value: "all", label: "All difficulties" },
+    { value: "profile", label: `Up to ${LEVELS[state.profile.level]} — profile maximum` },
+    ...[
+      { value: "1", label: "Starter — complexity 1/4" },
+      { value: "2", label: "Intermediate — complexity 2/4" },
+      { value: "3", label: "Advanced — complexity 3/4" },
+      { value: "4", label: "Expert — complexity 4/4" },
+    ].slice(0, profileDifficulty),
   ];
 
   function renderReplacementResults() {
@@ -1256,15 +1347,6 @@ function openReplacementPicker({
       context.allowedGroups,
       context.requestedGroup,
     );
-
-    const selectedNumber = Number(selectedDifficulty);
-    const aboveProfile =
-      selectedDifficulty === "all" ||
-      (Number.isFinite(selectedNumber) && selectedNumber > profileDifficulty);
-
-    $("#replacementDifficultyWarning").innerHTML = aboveProfile
-      ? '<p class="notice">This filter includes exercises above your profile difficulty. Choose deliberately and use only movements you can perform safely.</p>'
-      : "";
 
     const optionsById = new Map(options.map((candidate) => [String(candidate.id), candidate]));
 
@@ -1311,7 +1393,7 @@ function openReplacementPicker({
   $("#exerciseDialogContent").innerHTML = `
     <div class="eyebrow">Choose a substitute</div>
     <h2>Replace ${escapeHtml(currentExercise.name)}</h2>
-    <p>Options first stay inside the intended muscle slot. If that muscle has no eligible alternatives, the picker may use a sensible companion muscle already assigned to this workout—never an unrelated training day. Equipment and safety filters remain active.</p>
+    <p>Options first stay inside the intended muscle slot. If that muscle has no eligible alternatives, the picker may use a sensible companion muscle already assigned to this workout—never an unrelated training day. Equipment, safety and profile-difficulty limits remain active.</p>
     <div class="chips">
       <span class="chip">Target: ${escapeHtml(labelize(replacementTarget))}</span>
       ${replacementRole ? `<span class="chip">Role: ${escapeHtml(replacementRole)}</span>` : ""}
@@ -1329,7 +1411,6 @@ function openReplacementPicker({
           .join("")}
       </select>
     </label>
-    <div id="replacementDifficultyWarning"></div>
     <div id="replacementResults" class="replacement-list"></div>`;
 
   $("#exerciseDialog").showModal();
@@ -1426,6 +1507,7 @@ function renderRoutine() {
       <h1>${escapeHtml(program.title)}</h1>
       <p>Week ${currentWeek(program)} of ${program.durationWeeks} · ${program.completedSessions || 0} sessions complete.</p>
     </div>
+    ${weeklyCoverageHtml(program)}
     ${weeklyVolumeHtml(program)}
     <div class="card"><h2>Progression</h2><p>${escapeHtml(program.progression)}</p></div>
     <div class="card">
@@ -1646,6 +1728,7 @@ function renderProfile() {
   $("#importData").onchange = async (event) => {
     try {
       state = await importState(event.target.files[0]);
+      reconcileStoredProgramMetrics();
       renderAll();
       routeInitial();
       toast("Data imported.");
@@ -1741,6 +1824,7 @@ async function init() {
   try {
     exercises = await loadExercises();
     byId = new Map(exercises.map((exercise) => [String(exercise.id), exercise]));
+    reconcileStoredProgramMetrics();
     $("#datasetBadge").textContent = `${exercises.length.toLocaleString()} exercises`;
     $("#datasetBadge").classList.add("ready");
     routeInitial();
