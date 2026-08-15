@@ -4,6 +4,7 @@ export const DEFAULT_STATE = {
   schemaVersion: 2,
   profile: null,
   draftProgram: null,
+  draftComparison: null,
   activeProgram: null,
   previousProgram: null,
   activeSession: null,
@@ -21,7 +22,7 @@ export const DEFAULT_STATE = {
 const clone = value => JSON.parse(JSON.stringify(value));
 
 function normalizeState(value) {
-  return {
+  const normalized = {
     ...clone(DEFAULT_STATE),
     ...value,
     preferences: {
@@ -29,6 +30,48 @@ function normalizeState(value) {
       ...(value.preferences || {}),
     },
   };
+
+  if (!normalized.profile) {
+    normalized.draftProgram = null;
+    normalized.draftComparison = null;
+    normalized.activeProgram = null;
+    normalized.previousProgram = null;
+    normalized.activeSession = null;
+    normalized.history = [];
+    return normalized;
+  }
+
+  if (normalized.activeProgram) {
+    normalized.draftProgram = null;
+    normalized.draftComparison = null;
+  }
+
+  if (
+    normalized.activeSession &&
+    (!normalized.activeProgram || normalized.activeSession.programId !== normalized.activeProgram.id)
+  ) {
+    normalized.activeSession = null;
+  }
+
+  if (
+    normalized.draftProgram?.predecessorProgramId &&
+    normalized.draftProgram.predecessorProgramId !== normalized.previousProgram?.id
+  ) {
+    normalized.draftProgram = {
+      ...normalized.draftProgram,
+      predecessorProgramId: null,
+      carryForwardExerciseIds: [],
+    };
+  }
+
+  if (
+    normalized.draftComparison &&
+    normalized.draftComparison.toProgramId !== normalized.draftProgram?.id
+  ) {
+    normalized.draftComparison = null;
+  }
+
+  return normalized;
 }
 
 function migrateLegacy() {
