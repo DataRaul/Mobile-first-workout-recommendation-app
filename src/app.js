@@ -171,6 +171,10 @@ function loggedWeight(value) {
   return displayed || "—";
 }
 
+function countLabel(count, singular, plural = `${singular}s`) {
+  return `${count} ${Number(count) === 1 ? singular : plural}`;
+}
+
 function view(viewId) {
   $$(".view").forEach((element) => element.classList.toggle("active", element.id === viewId));
   $$("#bottomNav button").forEach((button) => {
@@ -1189,17 +1193,20 @@ function renderOnboarding(edit = false) {
   });
 }
 
-function workoutHtml(workout, { editable = false, scope = "view" } = {}) {
+function workoutHtml(
+  workout,
+  { editable = false, scope = "view", showHeader = true, showPerformance = false } = {},
+) {
   return `
     <div class="programme-workout">
-      <div class="summary-row">
+      ${showHeader ? `<div class="summary-row">
         <div>
           <h3>${escapeHtml(workout.name)}</h3>
-          <p>${workout.exercises.length} exercises · approximately ${state.profile.sessionMinutes} minutes${workout.emphasis?.length ? ` · ${workout.strictFocus ? "muscles" : "focus"}: ${workout.emphasis.map(labelize).join(", ")}` : ""}</p>
+          <p>${countLabel(workout.exercises.length, "exercise")} · approximately ${state.profile.sessionMinutes} minutes${workout.emphasis?.length ? ` · ${workout.strictFocus ? "muscles" : "focus"}: ${workout.emphasis.map(labelize).join(", ")}` : ""}</p>
           ${workoutMuscleChipsHtml(workout)}
           ${workout.availabilityShortfall ? `<p class="constraint-note">${workout.exercises.length} of ${workout.requestedExerciseCount} requested slots filled. Current filters contain no additional safe, distinct match.</p>` : ""}
         </div>
-      </div>
+      </div>` : ""}
       ${workout.exercises
         .map((item, index) => {
           const exercise = exerciseById(item.exerciseId);
@@ -1209,6 +1216,7 @@ function workoutHtml(workout, { editable = false, scope = "view" } = {}) {
               <div>
                 <strong>${escapeHtml(exercise?.name || item.exerciseId)}</strong>
                 <small>${labelize(exercise?.app.group)} · ${labelize(exercise?.equipment)} · ${item.sets} × ${item.reps}</small>
+                ${showPerformance ? `<small><strong>Last performance:</strong> ${escapeHtml(previousPerformance(item.exerciseId))}</small>` : ""}
                 ${item.targetRole ? `<small>Training role: ${escapeHtml(trainingRoleText(item))}${item.roleMatch && item.roleMatch !== "exact" ? ` · ${escapeHtml(roleCoverageText(item))}` : ""}</small>` : ""}
                 ${item.groupMatch === "companion" ? `<small>Same-day coverage: ${escapeHtml(groupCoverageText(item))}</small>` : ""}
                 <small class="complexity-meta">${escapeHtml(complexityText(exercise))}${item.difficultyDelta ? ` · ${escapeHtml(difficultyFallbackText(item))}` : ""}${item.qualityConfidence ? ` · enrichment ${escapeHtml(item.qualityConfidence)}` : ""}</small>
@@ -2343,11 +2351,35 @@ function renderRoutine() {
     return;
   }
 
+  const next = nextWorkout(program);
+  const completedSessions = program.completedSessions || 0;
+  const recentForWorkout = (workoutId) =>
+    latestRecordedSession(
+      state.history.filter(
+        (session) => session.programId === program.id && session.workoutId === workoutId,
+      ),
+    );
+  const nextLastSession = recentForWorkout(next.id);
+
   $("#routineView").innerHTML = `
     <div class="hero">
       <div class="eyebrow">My routine</div>
       <h1>${escapeHtml(program.title)}</h1>
-      <p>Week ${currentWeek(program)} of ${program.durationWeeks} · ${program.completedSessions || 0} sessions complete.</p>
+      <p>Week ${currentWeek(program)} of ${program.durationWeeks} · ${countLabel(completedSessions, "session")} complete.</p>
+    </div>
+    <div class="card routine-next-card">
+      <div class="summary-row">
+        <div>
+          <div class="eyebrow">Next workout · Day ${(program.nextWorkoutIndex || 0) + 1} of ${program.workouts.length}</div>
+          <h2>${escapeHtml(next.name)}</h2>
+          <p>${countLabel(next.exercises.length, "exercise")} · approximately ${program.sessionMinutes} minutes</p>
+          ${workoutMuscleChipsHtml(next)}
+          <small>${nextLastSession
+            ? `Last attempt: ${new Date(nextLastSession.completedAt).toLocaleDateString()} · ${nextLastSession.status === "partial" ? "partial, programme did not advance" : "completed"}`
+            : "This workout has not been recorded in the current programme yet."}</small>
+        </div>
+      </div>
+      <div class="actions"><button id="routineStartNext" type="button" class="btn primary">${state.activeSession ? "Resume workout" : "Start next workout"}</button></div>
     </div>
     ${weeklyCoverageHtml(program)}
     ${weeklyVolumeHtml(program)}
@@ -2355,11 +2387,32 @@ function renderRoutine() {
     <div class="card">
       <h2>Workout templates</h2>
       <p>Routine substitutions change future sessions. Every option remains inside your selected complexity and safety limits.</p>
-      ${program.workouts.map((workout) => workoutHtml(workout, { editable: true, scope: "routine" })).join("")}
+      <div class="routine-workout-list">
+        ${program.workouts.map((workout, index) => {
+          const isNext = workout.id === next.id;
+          const latest = recentForWorkout(workout.id);
+          return `<details class="routine-workout" ${isNext ? "open" : ""}>
+            <summary>
+              <span><strong>Day ${index + 1}: ${escapeHtml(workout.name)}</strong><small>${countLabel(workout.exercises.length, "exercise")} · ${latest ? `last ${new Date(latest.completedAt).toLocaleDateString()}${latest.status === "partial" ? " (partial)" : ""}` : "not performed yet"}</small></span>
+              ${isNext ? '<span class="chip">Next</span>' : ""}
+            </summary>
+            ${workoutHtml(workout, { editable: true, scope: "routine", showHeader: false, showPerformance: true })}
+          </details>`;
+        }).join("")}
+      </div>
     </div>
-    <div class="actions"><button id="endProgram" class="btn danger">End and rebuild programme</button></div>`;
+    <details class="card routine-action-menu">
+      <summary>Programme actions</summary>
+      <p>Ending this programme keeps recorded workout history but discards the remaining schedule.</p>
+      <button id="endProgram" type="button" class="btn danger">End and rebuild programme</button>
+    </details>`;
 
   bindWorkoutActions();
+  $("#routineStartNext").onclick = () => {
+    if (!state.activeSession) createSession();
+    renderSession({ focusHeading: true });
+    view("sessionView");
+  };
   $("#endProgram").onclick = () => {
     if (confirm("End the active programme? Completed workout history will be kept.")) {
       state.activeProgram = null;
