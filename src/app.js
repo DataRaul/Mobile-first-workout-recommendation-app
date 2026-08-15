@@ -303,22 +303,33 @@ function guideGoalsHtml(selectedGoal, allowGoalSelection) {
       <p>Your goal changes exercise priorities, repetitions, rest, progression and programme length. It does not choose your working weight.</p>
     </div>
     <div class="notice"><strong>Not sure?</strong><p>General fitness is the balanced starting point. You can refine the goal when you rebuild a future recommendation.</p></div>
-    <div class="guide-goal-list">
+    <div class="goal-comparison">
+      <div class="goal-comparison-head" aria-hidden="true"><span>Goal</span><span>Repetitions</span><span>Rest</span><span>Block</span></div>
       ${guideGoalKeys()
         .map((key) => {
           const goal = GOALS[key];
+          const guidance = goal.guidance;
           const selected = key === selectedGoal;
           return `
-            <article class="guide-goal-card ${selected ? "selected" : ""}">
-              ${goalGuidanceHtml(key)}
-              ${
-                allowGoalSelection
-                  ? `<button class="btn ${selected ? "primary" : ""} small" type="button" data-select-goal="${key}">${selected ? `${escapeHtml(goal.label)} selected` : `Use ${escapeHtml(goal.label)}`}</button>`
-                  : selected
-                    ? '<span class="current-goal-label">Current profile goal</span>'
-                    : ""
-              }
-            </article>`;
+            <details class="goal-comparison-row ${selected ? "selected" : ""}" ${selected ? "open" : ""}>
+              <summary>
+                <span class="goal-comparison-name"><strong>${escapeHtml(goal.label)}</strong><small>${escapeHtml(guidance.outcome)}${guidance.recommended ? " · good default" : ""}</small></span>
+                <span data-label="Repetitions">${escapeHtml(guidance.repLabel)}</span>
+                <span data-label="Rest">${escapeHtml(guidance.restLabel)}</span>
+                <span data-label="Block">${goal.weeks} weeks</span>
+              </summary>
+              <div class="goal-comparison-detail">
+                <p><strong>Choose when:</strong> ${escapeHtml(guidance.chooseWhen)}</p>
+                <p><strong>How it is programmed:</strong> ${escapeHtml(guidance.prescription)}</p>
+                ${
+                  allowGoalSelection
+                    ? `<button class="btn ${selected ? "primary" : ""} small" type="button" data-select-goal="${key}">${selected ? `${escapeHtml(goal.label)} selected` : `Use ${escapeHtml(goal.label)}`}</button>`
+                    : selected
+                      ? '<span class="current-goal-label">Current profile goal</span>'
+                      : ""
+                }
+              </div>
+            </details>`;
         })
         .join("")}
     </div>`;

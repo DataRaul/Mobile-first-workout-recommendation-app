@@ -53,5 +53,8 @@ for (const title of [
 }
 assert.ok(app.includes("Compare all goals"), "onboarding must link to the complete goal comparison");
 assert.ok(app.includes("Suggested repetitions are prefilled. Weight remains blank"), "weight ownership must be explicit");
+assert.ok(app.includes("goal-comparison-head"), "goal guidance must provide a compact comparison header");
+assert.ok(app.includes("goal-comparison-detail"), "goal rationale must remain expandable");
+assert.ok(!app.includes('class="guide-goal-card'), "goal guidance must not render seven fully expanded cards");
 
 console.log("Guide content, seven-goal metadata and five-tab navigation passed.");
