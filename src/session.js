@@ -9,3 +9,11 @@ export function sessionCompletion(session) {
     status: totalSets > 0 && completedSets === totalSets ? "completed" : "partial",
   };
 }
+
+const SET_LOG_FIELDS = new Set(["weight", "reps", "rir"]);
+
+export function updateSetLogValue(set, field, value) {
+  if (!set || !SET_LOG_FIELDS.has(field)) return set;
+  set[field] = String(value ?? "");
+  return set;
+}
