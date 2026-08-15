@@ -23,10 +23,14 @@ import {
 } from "./programme.js";
 import {
   latestRecordedSession,
+  invalidCompletedSets,
   READINESS_GUIDANCE,
   sessionCompletion,
   sessionMetrics,
   updateSetLogValue,
+  validateSetLog,
+  weightForDisplay,
+  weightForStorage,
 } from "./session.js";
 import {
   defaultTrainingWeekdays,
@@ -141,6 +145,15 @@ function currentDeviceLabel() {
 
 function backupMessage(backup) {
   return `Backup saved as ${backup.fileName} in ${backup.location}.`;
+}
+
+function weightUnit() {
+  return state.preferences?.weightUnit === "lb" ? "lb" : "kg";
+}
+
+function loggedWeight(value) {
+  const displayed = weightForDisplay(value, weightUnit());
+  return displayed || "—";
 }
 
 function view(viewId) {
@@ -513,7 +526,7 @@ function performanceText(performance) {
   const sets = performance?.sets || [];
   if (!sets.length) return "No final weight or repetitions were recorded.";
   return `Last recorded: ${sets
-    .map((set) => `${set.weight || "—"} kg × ${set.reps || "—"}${set.rir ? ` · RIR ${set.rir}` : ""}`)
+    .map((set) => `${loggedWeight(set.weight)} ${weightUnit()} × ${set.reps || "—"}${set.rir ? ` · RIR ${set.rir}` : ""}`)
     .join(", ")}`;
 }
 
@@ -825,6 +838,13 @@ function renderOnboarding(edit = false) {
           )
           .join("")}</div>
       </fieldset>
+        <label class="field">Weight unit
+          <select name="weightUnit">
+            <option value="kg" ${weightUnit() === "kg" ? "selected" : ""}>Kilograms (kg)</option>
+            <option value="lb" ${weightUnit() === "lb" ? "selected" : ""}>Pounds (lb)</option>
+          </select>
+          <small>Workout entries and history are converted when you change this display unit.</small>
+        </label>
         <fieldset id="customEquipment" class="profile-subsection ${profile.equipmentPreset === "custom" ? "" : "hidden"}">
         <legend>Custom equipment</legend>
         <div class="option-grid">${COMMON_EQUIPMENT.map(
@@ -1098,6 +1118,7 @@ function renderOnboarding(edit = false) {
     state.preferences = {
       ...state.preferences,
       profileStorage: selectedStorage,
+      weightUnit: String(form.get("weightUnit")) === "lb" ? "lb" : "kg",
     };
 
     try {
@@ -1449,7 +1470,7 @@ function renderToday() {
       .map((item) => {
         const performed = (item.setsLog || [])
           .filter((set) => set.done)
-          .map((set) => `${set.weight || "—"} kg × ${set.reps || "—"}`)
+          .map((set) => `${loggedWeight(set.weight)} ${weightUnit()} × ${set.reps || "—"}`)
           .join(", ");
         if (!performed) return "";
         return `<li><strong>${escapeHtml(exerciseById(item.exerciseId)?.name || item.exerciseId)}</strong><span>${escapeHtml(performed)}</span></li>`;
@@ -1465,7 +1486,7 @@ function renderToday() {
           <h2>${escapeHtml(latestSession.workoutName || "Workout")}</h2>
           <p>${escapeHtml(status)} · ${new Date(latestSession.completedAt).toLocaleDateString()} · ${latestMetrics.completedSets}/${latestMetrics.totalSets} sets completed</p>
         </div>
-        <div class="metric"><strong>${latestMetrics.volume.toLocaleString()}</strong><span>kg-rep volume</span></div>
+        <div class="metric"><strong>${Number(weightForDisplay(latestMetrics.volume, weightUnit())).toLocaleString()}</strong><span>${weightUnit()}-rep volume</span></div>
       </div>
       ${loggedExercises ? `<ul class="performance-list">${loggedExercises}</ul>` : "<p>No completed set values were recorded.</p>"}
     </div>`;
@@ -1589,7 +1610,7 @@ function previousPerformance(exerciseId) {
       return (
         item.setsLog
           ?.filter((set) => set.done)
-          .map((set) => `${set.weight || "—"} × ${set.reps || "—"}`)
+          .map((set) => `${loggedWeight(set.weight)} ${weightUnit()} × ${set.reps || "—"}`)
           .join(", ") || "No completed sets logged"
       );
     }
@@ -1597,7 +1618,7 @@ function previousPerformance(exerciseId) {
   const stored = state.previousProgram?.performanceByExercise?.[exerciseId];
   if (stored?.sets?.length) {
     return stored.sets
-      .map((set) => `${set.weight || "—"} × ${set.reps || "—"}`)
+      .map((set) => `${loggedWeight(set.weight)} ${weightUnit()} × ${set.reps || "—"}`)
       .join(", ");
   }
   return "No previous logged sets";
@@ -1615,6 +1636,8 @@ function renderSession() {
   const exercise = exerciseById(item.exerciseId);
   const completedSets = session.exercises.flatMap((entry) => entry.setsLog).filter((set) => set.done).length;
   const totalSets = session.exercises.flatMap((entry) => entry.setsLog).length;
+  const instructions = instructionSteps(exercise);
+  const unit = weightUnit();
 
   $("#sessionView").innerHTML = `
     <div class="exercise-stage">
@@ -1625,7 +1648,7 @@ function renderSession() {
         </div>
         <button id="exitSession" class="btn ghost small">Exit</button>
       </div>
-      <div class="progress-track"><span style="width:${(completedSets / totalSets) * 100}%"></span></div>
+      <div class="progress-track" role="progressbar" aria-label="Workout sets completed" aria-valuemin="0" aria-valuemax="${totalSets}" aria-valuenow="${completedSets}"><span style="width:${(completedSets / totalSets) * 100}%"></span></div>
       <article class="card" style="margin-top:14px">
         <img id="sessionMedia" class="exercise-media" src="${mediaUrl(exercise.image)}" alt="${escapeHtml(exercise.name)}">
         <div class="exercise-title-row">
@@ -1646,22 +1669,39 @@ function renderSession() {
         ${constraintNotesHtml(item)}
         <p><strong>Previous:</strong> ${escapeHtml(previousPerformance(exercise.id))}</p>
         ${item.carriedFromPrevious ? '<div class="notice"><strong>Carried forward</strong><p>The last recorded weight, repetitions and RIR are prefilled below. Edit them to match what you actually complete today.</p></div>' : ""}
-        <details><summary>How to perform it</summary><ol class="instructions">${instructionSteps(exercise)
-          .map((step) => `<li>${escapeHtml(step)}</li>`)
-          .join("")}</ol></details>
+        ${instructions.length
+          ? `<details><summary>How to perform it</summary><ol class="instructions">${instructions.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></details>`
+          : '<div class="notice"><strong>Instructions unavailable</strong><p>Use the visual only if you already know this movement. Otherwise choose a substitute with clear instructions.</p></div>'}
+        <details class="warmup-guidance"><summary>Warm up before working sets</summary><p>Use 1–3 gradual practice sets with an easy load and controlled range of motion. Warm-up sets are not logged as working sets below.</p></details>
+        <button id="reportPain" class="btn danger small" type="button" aria-expanded="${Boolean(item.painReported)}">Pain or unusual symptoms during this movement</button>
+        <div id="painGuidance" class="notice pain-guidance" role="alert" tabindex="-1" ${item.painReported ? "" : "hidden"}>
+          <strong>Stop this movement</strong>
+          <p>Do not train through sharp or worsening pain. You can choose a pain-free substitute or stop this workout. Seek qualified medical advice when appropriate.</p>
+          <div class="actions">
+            <button id="painSubstitute" class="btn small" type="button">Choose a substitute</button>
+            <button id="stopForPain" class="btn ghost small" type="button">Stop for today</button>
+            <button id="clearPainReport" class="btn ghost small" type="button">Dismiss</button>
+          </div>
+        </div>
       </article>
       <article class="card">
         <h2>Record sets</h2>
-        <div class="set-table">${item.setsLog
-          .map(
-            (set, index) => `<div class="set-row ${set.done ? "done" : ""}" data-set="${index}">
+        <p>Weight is optional for bodyweight movements. Enter repetitions or seconds before marking a set complete. RIR means repetitions in reserve.</p>
+        <div class="set-table">
+          <div class="set-table-head" aria-hidden="true"><span>Set</span><span>Weight (${unit})</span><span>Reps / sec</span><span>RIR</span><span>Done</span></div>
+          ${item.setsLog
+          .map((set, index) => {
+            const validation = set.done ? validateSetLog(set) : { valid: true, errors: {} };
+            const errorText = Object.values(validation.errors).join(" ");
+            return `<div class="set-row ${set.done ? "done" : ""} ${validation.valid ? "" : "invalid"}" data-set="${index}">
               <strong>${index + 1}</strong>
-              <input data-field="weight" value="${escapeHtml(set.weight)}" inputmode="decimal" placeholder="kg">
-              <input data-field="reps" value="${escapeHtml(set.reps)}" inputmode="numeric" placeholder="reps">
-              <input class="rir-field" data-field="rir" value="${escapeHtml(set.rir)}" inputmode="numeric" placeholder="RIR">
-              <button class="set-check ${set.done ? "done" : ""}" data-action="set-done">${set.done ? "✓" : "○"}</button>
-            </div>`,
-          )
+              <input type="number" min="0" max="${unit === "lb" ? "11023" : "5000"}" step="0.1" data-field="weight" value="${escapeHtml(weightForDisplay(set.weight, unit))}" inputmode="decimal" aria-label="Set ${index + 1} weight in ${unit}" aria-invalid="${Boolean(validation.errors.weight)}" placeholder="${unit}">
+              <input type="number" min="1" max="999" step="1" data-field="reps" value="${escapeHtml(set.reps)}" inputmode="numeric" aria-label="Set ${index + 1} repetitions or seconds" aria-invalid="${Boolean(validation.errors.reps)}" placeholder="reps">
+              <input type="number" min="0" max="10" step="1" class="rir-field" data-field="rir" value="${escapeHtml(set.rir)}" inputmode="numeric" aria-label="Set ${index + 1} repetitions in reserve" aria-invalid="${Boolean(validation.errors.rir)}" placeholder="RIR">
+              <button type="button" class="set-check ${set.done ? "done" : ""}" data-action="set-done" aria-label="${set.done ? "Mark" : "Mark"} set ${index + 1} ${set.done ? "not complete" : "complete"}">${set.done ? "✓" : "○"}</button>
+              <small class="set-error" role="alert" ${errorText ? "" : "hidden"}>${escapeHtml(errorText)}</small>
+            </div>`;
+          })
           .join("")}</div>
       </article>
       <div class="actions">
@@ -1686,9 +1726,27 @@ function renderSession() {
   function syncSetRow(row) {
     const set = item.setsLog[Number(row.dataset.set)];
     row.querySelectorAll("input[data-field]").forEach((input) => {
-      updateSetLogValue(set, input.dataset.field, input.value);
+      const value = input.dataset.field === "weight"
+        ? weightForStorage(input.value, unit)
+        : input.value;
+      updateSetLogValue(set, input.dataset.field, value);
     });
     return set;
+  }
+
+  function showSetValidation(row, validation) {
+    row.classList.toggle("invalid", !validation.valid);
+    row.querySelectorAll("input[data-field]").forEach((input) => {
+      const invalid = Boolean(validation.errors[input.dataset.field]);
+      input.setAttribute("aria-invalid", String(invalid));
+    });
+    const message = row.querySelector(".set-error");
+    message.textContent = Object.values(validation.errors).join(" ");
+    message.hidden = validation.valid;
+    if (!validation.valid) {
+      const firstField = Object.keys(validation.errors)[0];
+      row.querySelector(`[data-field="${firstField}"]`)?.focus();
+    }
   }
 
   function syncVisibleSetInputs() {
@@ -1698,7 +1756,9 @@ function renderSession() {
 
   $$(".set-row input").forEach((input) => {
     input.addEventListener("input", (event) => {
-      syncSetRow(event.target.closest(".set-row"));
+      const row = event.target.closest(".set-row");
+      const set = syncSetRow(row);
+      if (row.classList.contains("invalid")) showSetValidation(row, validateSetLog(set));
       persist();
     });
   });
@@ -1707,6 +1767,11 @@ function renderSession() {
     button.onclick = () => {
       const row = button.closest(".set-row");
       const set = syncSetRow(row);
+      if (!set.done) {
+        const validation = validateSetLog(set);
+        showSetValidation(row, validation);
+        if (!validation.valid) return;
+      }
       set.done = !set.done;
       persist();
       if (set.done) startRest(item.restSeconds);
@@ -1739,6 +1804,30 @@ function renderSession() {
   $("#replaceRoutine").onclick = () => openReplacementPicker({ scope: "session", permanent: true });
   $("#machineUnavailable").onclick = () =>
     openReplacementPicker({ scope: "session", permanent: true, markUnavailable: true });
+  $("#reportPain").onclick = () => {
+    item.painReported = true;
+    item.painReportedAt = new Date().toISOString();
+    persist();
+    $("#reportPain").setAttribute("aria-expanded", "true");
+    $("#painGuidance").hidden = false;
+    $("#painGuidance").focus?.();
+  };
+  $("#painSubstitute")?.addEventListener("click", () =>
+    openReplacementPicker({ scope: "session", permanent: false }),
+  );
+  $("#stopForPain")?.addEventListener("click", () => {
+    syncVisibleSetInputs();
+    renderToday();
+    view("todayView");
+    toast("Workout paused. Your entries remain saved.");
+  });
+  $("#clearPainReport")?.addEventListener("click", () => {
+    item.painReported = false;
+    item.painReportedAt = null;
+    persist();
+    $("#reportPain").setAttribute("aria-expanded", "false");
+    $("#painGuidance").hidden = true;
+  });
 
   renderRest();
 }
@@ -1844,6 +1933,8 @@ function replacementContext({ scope, workoutId, itemIndex }) {
           done: false,
         }));
         item.carriedFromPrevious = false;
+        item.painReported = false;
+        item.painReportedAt = null;
 
         if (permanent) {
           const template = workout?.exercises.find((entry) => entry.exerciseId === oldId);
@@ -2017,6 +2108,14 @@ function renderRest() {
 
 function finishSession() {
   const session = state.activeSession;
+  const invalidSets = invalidCompletedSets(session);
+  if (invalidSets.length) {
+    session.currentIndex = invalidSets[0].exerciseIndex;
+    persist();
+    renderSession();
+    alert("A completed set has missing or invalid repetitions, weight, or RIR. Correct the highlighted set before finishing.");
+    return;
+  }
   const completion = sessionCompletion(session);
   if (
     completion.status === "partial" &&
@@ -2117,9 +2216,7 @@ function renderRoutine() {
 }
 
 function sessionVolume(session) {
-  return session.exercises
-    .flatMap((exercise) => exercise.setsLog || [])
-    .reduce((sum, set) => sum + (Number(set.weight) || 0) * (Number(set.reps) || 0), 0);
+  return sessionMetrics(session).volume;
 }
 
 function renderProgress() {
@@ -2134,7 +2231,7 @@ function renderProgress() {
     <div class="stat-grid">
       <div class="stat"><strong>${sessions.length}</strong><span>workouts</span></div>
       <div class="stat"><strong>${completedSets}</strong><span>completed sets</span></div>
-      <div class="stat"><strong>${volume.toLocaleString()}</strong><span>kg-rep volume</span></div>
+      <div class="stat"><strong>${Number(weightForDisplay(volume, weightUnit())).toLocaleString()}</strong><span>${weightUnit()}-rep volume</span></div>
       <div class="stat"><strong>${state.activeProgram ? currentWeek(state.activeProgram) : "—"}</strong><span>programme week</span></div>
     </div>
     <div class="card" style="margin-top:14px">
@@ -2146,7 +2243,7 @@ function renderProgress() {
               .reverse()
               .slice(0, 12)
               .map(
-                (session) => `<div class="exercise-line"><span class="number">${session.status === "partial" ? "…" : "✓"}</span><div><strong>${escapeHtml(session.workoutName)}${session.status === "partial" ? " · Partial" : ""}</strong><small>${new Date(session.completedAt).toLocaleDateString()} · ${session.exercises.flatMap((exercise) => exercise.setsLog).filter((set) => set.done).length} sets · ${sessionVolume(session).toLocaleString()} volume</small></div></div>`,
+                (session) => `<div class="exercise-line"><span class="number">${session.status === "partial" ? "…" : "✓"}</span><div><strong>${escapeHtml(session.workoutName)}${session.status === "partial" ? " · Partial" : ""}</strong><small>${new Date(session.completedAt).toLocaleDateString()} · ${session.exercises.flatMap((exercise) => exercise.setsLog).filter((set) => set.done).length} sets · ${Number(weightForDisplay(sessionVolume(session), weightUnit())).toLocaleString()} ${weightUnit()}-rep volume</small></div></div>`,
               )
               .join("")
           : "<p>No completed workouts yet.</p>"
@@ -2276,6 +2373,15 @@ function renderProfile() {
       </div>
     </div>
     <div class="card">
+      <h2>Workout logging</h2>
+      <label class="field" for="profileWeightUnit">Weight unit</label>
+      <select id="profileWeightUnit">
+        <option value="kg" ${weightUnit() === "kg" ? "selected" : ""}>Kilograms (kg)</option>
+        <option value="lb" ${weightUnit() === "lb" ? "selected" : ""}>Pounds (lb)</option>
+      </select>
+      <p>Changing the unit converts workout inputs and history displays without changing the underlying training record.</p>
+    </div>
+    <div class="card">
       <h2>Where your data is saved</h2>
       <p><strong>Live copy:</strong> This browser on ${deviceLabel}. It is not stored in an account or automatically synced to another device.</p>
       ${lastBackup}
@@ -2302,6 +2408,12 @@ function renderProfile() {
   };
   $("#profileGuideHow").onclick = () => openGuide("how");
   $("#profileGuideGoals").onclick = () => openGuide("goals");
+  $("#profileWeightUnit").onchange = (event) => {
+    state.preferences.weightUnit = event.target.value === "lb" ? "lb" : "kg";
+    persist();
+    renderAll();
+    toast(`Weight unit changed to ${weightUnit()}.`);
+  };
   $("#exportData").onclick = async () => {
     try {
       const backup = await exportState(state, { chooseLocation: true });
