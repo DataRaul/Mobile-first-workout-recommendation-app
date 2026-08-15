@@ -4,6 +4,7 @@ import {
   carriedForwardSets,
   comparePrograms,
   completedProgramSnapshot,
+  continuationSuggestion,
   linkProgramContinuation,
   summarizeProgramPerformance,
 } from "../src/programme.js";
@@ -129,6 +130,8 @@ const nextProgram = {
 const comparison = comparePrograms(snapshot, nextProgram);
 assert.deepEqual(comparison.summary, {
   retained: 1,
+  progressed: 0,
+  reduced: 0,
   replaced: 1,
   added: 1,
   removed: 1,
@@ -156,5 +159,50 @@ assert.equal(
   carriedForwardSets(linked, snapshot, nextProgram.workouts[0].exercises[1]),
   null,
 );
+
+const easySnapshot = {
+  ...snapshot,
+  review: { outcome: "too_easy", recovery: "good", symptoms: "no" },
+};
+const easyLinked = linkProgramContinuation(nextProgram, easySnapshot);
+const easyItem = easyLinked.workouts[0].exercises[0];
+assert.equal(easyItem.continuation.type, "progressed_reps");
+assert.equal(continuationSuggestion(easySnapshot, easyItem).type, "progressed_reps");
+const easyCarried = carriedForwardSets(easyLinked, easySnapshot, easyItem);
+assert.equal(easyCarried[0].reps, "12");
+assert.equal(easyCarried[1].reps, "12");
+assert.equal(easyCarried[2].reps, "11");
+assert.equal(comparePrograms(easySnapshot, easyLinked).summary.progressed, 1);
+
+const hardSnapshot = {
+  ...snapshot,
+  review: { outcome: "too_hard", recovery: "poor", symptoms: "no" },
+};
+const hardLinked = linkProgramContinuation(nextProgram, hardSnapshot);
+const hardItem = hardLinked.workouts[0].exercises[0];
+assert.equal(hardItem.continuation.type, "reduced");
+assert.equal(carriedForwardSets(hardLinked, hardSnapshot, hardItem)[0].weight, "31.5");
+
+const topRangeSnapshot = {
+  ...snapshot,
+  review: { outcome: "on_target", recovery: "good", symptoms: "no" },
+  performanceByExercise: {
+    ...snapshot.performanceByExercise,
+    "chest-press": {
+      ...snapshot.performanceByExercise["chest-press"],
+      sets: [
+        { weight: "40", reps: "12", rir: "2" },
+        { weight: "40", reps: "12", rir: "2" },
+        { weight: "40", reps: "12", rir: "2" },
+      ],
+    },
+  },
+};
+const progressedLinked = linkProgramContinuation(nextProgram, topRangeSnapshot);
+const progressedItem = progressedLinked.workouts[0].exercises[0];
+assert.equal(progressedItem.continuation.type, "progressed_load");
+const progressedSets = carriedForwardSets(progressedLinked, topRangeSnapshot, progressedItem);
+assert.equal(progressedSets[0].weight, "41");
+assert.equal(progressedSets[0].reps, "6");
 
 console.log("Programme continuation comparison tests passed.");
