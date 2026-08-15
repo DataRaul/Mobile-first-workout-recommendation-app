@@ -2607,39 +2607,70 @@ function normalize(value) {
   return String(value || "").toLowerCase();
 }
 
+function isFavoriteExercise(id) {
+  return (state.profile?.favorites || []).some((favoriteId) => String(favoriteId) === String(id));
+}
+
+function toggleFavoriteExercise(id) {
+  const favorites = new Set((state.profile?.favorites || []).map(String));
+  const key = String(id);
+  if (favorites.has(key)) favorites.delete(key);
+  else favorites.add(key);
+  state.profile.favorites = [...favorites];
+  persist();
+  return favorites.has(key);
+}
+
+function refreshExerciseLibraryIfRendered() {
+  if (!$("#exerciseGrid")) return;
+  renderBrowserGrid();
+  $("#favoritesFilterLabel").textContent = `Favorites only (${state.profile.favorites.length})`;
+}
+
 function browserResults() {
   const query = normalize($("#exerciseSearch")?.value);
-  const category = $("#categoryFilter")?.value || "";
+  const group = $("#groupFilter")?.value || "";
   const equipment = $("#equipmentFilter")?.value || "";
+  const movement = $("#movementFilter")?.value || "";
+  const complexity = Number($("#complexityFilter")?.value) || 0;
+  const favoritesOnly = Boolean($("#favoritesFilter")?.checked);
   return exercises.filter(
     (exercise) =>
-      (!query || normalize(`${exercise.name} ${exercise.target} ${exercise.muscle_group}`).includes(query)) &&
-      (!category || exercise.category === category) &&
-      (!equipment || exercise.equipment === equipment),
+      (!query || normalize(`${exercise.name} ${exercise.target} ${exercise.muscle_group} ${(exercise.secondary_muscles || []).join(" ")} ${exercise.app.group} ${exercise.app.movement} ${exercise.equipment}`).includes(query)) &&
+      (!group || exercise.app.group === group) &&
+      (!equipment || exercise.equipment === equipment) &&
+      (!movement || exercise.app.movement === movement) &&
+      (!complexity || exercise.app.complexity === complexity) &&
+      (!favoritesOnly || isFavoriteExercise(exercise.id)),
   );
 }
 
 function renderExercises(reset = false) {
   if (reset) browserLimit = 24;
-  const categories = uniqueValues(exercises, "category");
+  const groups = [...new Set(exercises.map((exercise) => exercise.app.group))].sort();
   const equipment = uniqueValues(exercises, "equipment");
+  const movements = [...new Set(exercises.map((exercise) => exercise.app.movement))].sort();
+  const favoriteCount = state.profile?.favorites?.length || 0;
 
   $("#exercisesView").innerHTML = `
     <div class="hero">
       <div class="eyebrow">Exercise library</div>
       <h1>All ${exercises.length.toLocaleString()} exercises</h1>
-      <p>Search the complete source dataset. Complexity is calculated by this app and programme recommendations are capped by your profile level.</p>
+      <p>Search the complete source dataset using the same normalized muscle, movement and complexity taxonomy as the recommender.</p>
     </div>
     <div class="exercise-toolbar">
-      <input id="exerciseSearch" placeholder="Search name, muscle or target">
-      <select id="categoryFilter"><option value="">All body parts</option>${categories.map((value) => `<option>${escapeHtml(value)}</option>`).join("")}</select>
-      <select id="equipmentFilter"><option value="">All equipment</option>${equipment.map((value) => `<option>${escapeHtml(value)}</option>`).join("")}</select>
+      <label class="field">Search exercises<input id="exerciseSearch" type="search" placeholder="Name, target, muscle or movement"></label>
+      <label class="field">Muscle group<select id="groupFilter"><option value="">All normalized muscles</option>${groups.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(labelize(value))}</option>`).join("")}</select></label>
+      <label class="field">Movement<select id="movementFilter"><option value="">All movements</option>${movements.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(labelize(value))}</option>`).join("")}</select></label>
+      <label class="field">Equipment<select id="equipmentFilter"><option value="">All equipment</option>${equipment.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(labelize(value))}</option>`).join("")}</select></label>
+      <label class="field">Complexity<select id="complexityFilter"><option value="">All complexities</option>${[1, 2, 3, 4].map((value) => `<option value="${value}">${value}/4 · ${COMPLEXITY_LABELS[value]}</option>`).join("")}</select></label>
+      <label class="option favorites-filter"><input id="favoritesFilter" type="checkbox"><span id="favoritesFilterLabel">Favorites only (${favoriteCount})</span></label>
     </div>
-    <div id="browserCount"></div>
+    <div id="browserCount" role="status"></div>
     <div id="exerciseGrid" class="exercise-grid"></div>
-    <div class="actions"><button id="loadMore" class="btn">Load more</button></div>`;
+    <div class="actions"><button id="loadMore" type="button" class="btn">Load more</button></div>`;
 
-  ["exerciseSearch", "categoryFilter", "equipmentFilter"].forEach((id) => {
+  ["exerciseSearch", "groupFilter", "movementFilter", "equipmentFilter", "complexityFilter", "favoritesFilter"].forEach((id) => {
     $("#" + id).addEventListener(id === "exerciseSearch" ? "input" : "change", () => {
       browserLimit = 24;
       renderBrowserGrid();
@@ -2655,14 +2686,27 @@ function renderExercises(reset = false) {
 function renderBrowserGrid() {
   const results = browserResults();
   const shown = results.slice(0, browserLimit);
-  $("#browserCount").innerHTML = `<p>${results.length.toLocaleString()} matching exercises</p>`;
+  $("#browserCount").innerHTML = `<p>${results.length.toLocaleString()} matching exercise${results.length === 1 ? "" : "s"}</p>`;
   $("#exerciseGrid").innerHTML = shown
     .map(
-      (exercise) => `<button class="exercise-browser-card" data-id="${exercise.id}"><img loading="lazy" src="${mediaUrl(exercise.image)}" alt=""><div><strong>${escapeHtml(exercise.name)}</strong><small>${labelize(exercise.app.group)} · ${labelize(exercise.equipment)}</small><small class="complexity-meta">${escapeHtml(complexityText(exercise))}</small></div></button>`,
+      (exercise) => `<article class="exercise-browser-card">
+        <button type="button" class="exercise-card-open" data-id="${exercise.id}" aria-label="View details for ${escapeHtml(exercise.name)}">
+          <img loading="lazy" src="${mediaUrl(exercise.image)}" alt="">
+          <div><strong>${escapeHtml(exercise.name)}</strong><small>${labelize(exercise.app.group)} · ${labelize(exercise.equipment)}</small><small>${labelize(exercise.app.movement)}</small><small class="complexity-meta">${escapeHtml(complexityText(exercise))}</small></div>
+        </button>
+        <button type="button" class="favorite-exercise" data-favorite-id="${exercise.id}" aria-pressed="${isFavoriteExercise(exercise.id)}" aria-label="${isFavoriteExercise(exercise.id) ? "Remove" : "Add"} ${escapeHtml(exercise.name)} ${isFavoriteExercise(exercise.id) ? "from" : "to"} favorites">${isFavoriteExercise(exercise.id) ? "★" : "☆"}</button>
+      </article>`,
     )
     .join("");
-  $$(".exercise-browser-card").forEach((button) => {
+  $$(".exercise-card-open").forEach((button) => {
     button.onclick = () => openExercise(button.dataset.id);
+  });
+  $$(".favorite-exercise").forEach((button) => {
+    button.onclick = () => {
+      const selected = toggleFavoriteExercise(button.dataset.favoriteId);
+      refreshExerciseLibraryIfRendered();
+      toast(selected ? "Exercise added to favorites." : "Exercise removed from favorites.");
+    };
   });
   $("#loadMore").hidden = shown.length >= results.length;
 }
@@ -2670,19 +2714,51 @@ function renderBrowserGrid() {
 function openExercise(id) {
   const exercise = exerciseById(id);
   if (!exercise) return;
+  const instructions = instructionSteps(exercise);
+  const secondaryMuscles = [...new Set(exercise.secondary_muscles || [])]
+    .filter((muscle) => normalize(muscle) !== normalize(exercise.app.group));
+  const goalLabels = (exercise.app.goalTags || []).map(
+    (goal) => GOALS[goal]?.label || labelize(goal),
+  );
+  const quality = exercise.app.quality || {};
   $("#exerciseDialogContent").innerHTML = `
-    <img class="exercise-media" src="${mediaUrl(exercise.gif_url || exercise.image)}" alt="${escapeHtml(exercise.name)}">
-    <div class="eyebrow" style="margin-top:14px">${labelize(exercise.category)}</div>
+    <img id="detailExerciseMedia" class="exercise-media" src="${mediaUrl(exercise.image)}" alt="${escapeHtml(exercise.name)} demonstration">
+    ${exercise.gif_url && exercise.image ? '<button id="toggleDetailMedia" type="button" class="btn small" aria-pressed="false">Show animation</button>' : ""}
+    <div class="eyebrow" style="margin-top:14px">${labelize(exercise.app.group)} · normalized muscle</div>
     <h2>${escapeHtml(exercise.name)}</h2>
     <div class="chips">
       <span class="chip">${labelize(exercise.equipment)}</span>
-      <span class="chip">Target: ${escapeHtml(exercise.target)}</span>
-      <span class="chip">${labelize(exercise.app.movement)}</span>
+      <span class="chip">Primary: ${escapeHtml(labelize(exercise.app.group))}</span>
+      <span class="chip">Source target: ${escapeHtml(exercise.target)}</span>
+      <span class="chip">Movement: ${labelize(exercise.app.movement)}</span>
       <span class="chip complexity-chip">${escapeHtml(complexityText(exercise))}</span>
     </div>
-    <ol class="instructions">${instructionSteps(exercise).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+    <button id="favoriteDetailExercise" type="button" class="btn" aria-pressed="${isFavoriteExercise(exercise.id)}">${isFavoriteExercise(exercise.id) ? "★ Remove from favorites" : "☆ Add to favorites"}</button>
+    <div class="detail-facts">
+      <p><strong>Secondary muscles:</strong> ${escapeHtml(secondaryMuscles.length ? secondaryMuscles.map(labelize).join(", ") : "None listed in the source dataset")}.</p>
+      <p><strong>Training roles:</strong> ${escapeHtml((exercise.app.trainingRoles || []).map((role) => TRAINING_ROLE_LABELS[role] || labelize(role)).join(", ") || "General")}.</p>
+      <p><strong>Goal tags:</strong> ${escapeHtml(goalLabels.join(", ") || "General")}.</p>
+      <p><strong>Enrichment confidence:</strong> ${escapeHtml(labelize(quality.confidence || "unknown"))}${Number.isFinite(Number(quality.score)) ? ` · score ${Number(quality.score).toFixed(2)}` : ""} · ${escapeHtml(labelize(quality.reviewStatus || "not reviewed"))}.</p>
+    </div>
+    ${instructions.length ? `<ol class="instructions">${instructions.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>` : '<div class="notice"><strong>Instructions unavailable</strong><p>Use the visual only if you already know this movement.</p></div>'}
     <p class="notice">Automated safety enrichment: ${exercise.app.safetyFlags.length ? exercise.app.safetyFlags.map((flag) => CONSTRAINTS[flag]).join(", ") : "no specific flag detected"}. This is not medical advice.</p>`;
   $("#exerciseDialog").showModal();
+  let showingAnimation = false;
+  $("#toggleDetailMedia")?.addEventListener("click", () => {
+    showingAnimation = !showingAnimation;
+    $("#detailExerciseMedia").src = mediaUrl(showingAnimation ? exercise.gif_url : exercise.image);
+    $("#toggleDetailMedia").textContent = showingAnimation ? "Show image" : "Show animation";
+    $("#toggleDetailMedia").setAttribute("aria-pressed", String(showingAnimation));
+  });
+  $("#favoriteDetailExercise").onclick = () => {
+    const selected = toggleFavoriteExercise(exercise.id);
+    $("#favoriteDetailExercise").setAttribute("aria-pressed", String(selected));
+    $("#favoriteDetailExercise").textContent = selected
+      ? "★ Remove from favorites"
+      : "☆ Add to favorites";
+    refreshExerciseLibraryIfRendered();
+    toast(selected ? "Exercise added to favorites." : "Exercise removed from favorites.");
+  };
 }
 
 function renderProfile() {
