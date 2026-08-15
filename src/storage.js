@@ -17,6 +17,7 @@ export const DEFAULT_STATE = {
     lastBackupFileName: null,
     lastBackupLocation: null,
     readinessCheck: null,
+    weightUnit: "kg",
   },
 };
 
