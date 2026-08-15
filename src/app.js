@@ -213,6 +213,10 @@ function countLabel(count, singular, plural = `${singular}s`) {
   return `${count} ${Number(count) === 1 ? singular : plural}`;
 }
 
+function preferredScrollBehavior() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
 function historySessionKey(session) {
   return String(session?.id || session?.completedAt || "");
 }
@@ -225,6 +229,12 @@ function view(viewId) {
   });
   $("#bottomNav").hidden = ["loadingView", "onboardingView", "plannerView", "sessionView"].includes(viewId);
   window.scrollTo({ top: 0, behavior: "auto" });
+  requestAnimationFrame(() => {
+    const heading = document.querySelector(`#${viewId} h1`);
+    if (!heading) return;
+    heading.setAttribute("tabindex", "-1");
+    heading.focus({ preventScroll: true });
+  });
 }
 
 function exerciseById(id) {
@@ -442,9 +452,11 @@ function openGuide(section = "how", { allowGoalSelection = false } = {}) {
         content.querySelector(`[data-guide-section="${activeSection}"]`)?.focus();
       };
       button.onkeydown = (event) => {
-        if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
-        activeSection = activeSection === "how" ? "goals" : "how";
+        if (event.key === "Home") activeSection = "how";
+        else if (event.key === "End") activeSection = "goals";
+        else activeSection = activeSection === "how" ? "goals" : "how";
         renderGuideDialog();
         content.querySelector(`[data-guide-section="${activeSection}"]`)?.focus();
       };
@@ -1348,10 +1360,10 @@ function workoutHtml(
                 ${constraintNotesHtml(item, true)}
               </div>
               <div class="exercise-line-actions">
-                <button class="btn small ghost inspect-exercise" data-id="${item.exerciseId}">View</button>
+                <button type="button" class="btn small ghost inspect-exercise" data-id="${item.exerciseId}">View</button>
                 ${
                   editable
-                    ? `<button class="btn small substitute-exercise" data-scope="${scope}" data-workout-id="${workout.id}" data-index="${index}">Substitute</button>`
+                    ? `<button type="button" class="btn small substitute-exercise" data-scope="${scope}" data-workout-id="${workout.id}" data-index="${index}">Substitute</button>`
                     : ""
                 }
               </div>
@@ -1407,19 +1419,19 @@ function renderPlanner() {
       </div>
     </div>
     <div class="planner-tabs" role="tablist" aria-label="Recommendation review sections">
-      <button type="button" role="tab" data-planner-tab="overview" aria-selected="true">Overview</button>
-      <button type="button" role="tab" data-planner-tab="week" aria-selected="false">Weekly plan</button>
-      <button type="button" role="tab" data-planner-tab="analysis" aria-selected="false">Analysis</button>
+      <button id="plannerTabOverview" type="button" role="tab" data-planner-tab="overview" aria-controls="plannerPanelOverview" aria-selected="true" tabindex="0">Overview</button>
+      <button id="plannerTabWeek" type="button" role="tab" data-planner-tab="week" aria-controls="plannerPanelWeek" aria-selected="false" tabindex="-1">Weekly plan</button>
+      <button id="plannerTabAnalysis" type="button" role="tab" data-planner-tab="analysis" aria-controls="plannerPanelAnalysis" aria-selected="false" tabindex="-1">Analysis</button>
     </div>
 
-    <section class="planner-panel" data-planner-panel="overview" role="tabpanel">
+    <section id="plannerPanelOverview" class="planner-panel" data-planner-panel="overview" role="tabpanel" aria-labelledby="plannerTabOverview" tabindex="0">
       <div class="card saved-draft-card">
         <div>
           <div class="eyebrow">Saved automatically</div>
           <h2>Your recommendation will still be here</h2>
           <p>You do not have to accept it now. You can leave, reopen the app, and continue reviewing this same draft.</p>
         </div>
-        <button id="continueLater" class="btn ghost">Continue later</button>
+        <button id="continueLater" class="btn ghost" type="button">Continue later</button>
       </div>
       ${draftRegenerationHtml(program)}
       ${programmeReviewHtml(state.previousProgram, program)}
@@ -1432,7 +1444,7 @@ function renderPlanner() {
       </div>
     </section>
 
-    <section class="planner-panel" data-planner-panel="week" role="tabpanel" hidden>
+    <section id="plannerPanelWeek" class="planner-panel" data-planner-panel="week" role="tabpanel" aria-labelledby="plannerTabWeek" tabindex="0" hidden>
       <div class="card">
         <div class="summary-row">
           <div>
@@ -1452,7 +1464,7 @@ function renderPlanner() {
                   item.constraintNotes?.some((note) => note.status === "caution"),
               );
               return `<details class="planner-workout" data-has-issues="${hasIssues}" ${index === 0 ? "open" : ""}>
-                <summary><span><strong>${escapeHtml(workout.name)}</strong><small>${workout.exercises.length} exercises · about ${program.sessionMinutes} minutes</small></span><div>${workoutMuscleChipsHtml(workout)}</div></summary>
+                <summary><span><strong>${escapeHtml(workout.name)}</strong><small>${countLabel(workout.exercises.length, "exercise")} · about ${program.sessionMinutes} minutes</small></span><div>${workoutMuscleChipsHtml(workout)}</div></summary>
                 ${workoutHtml(workout, { editable: true, scope: "draft" })}
               </details>`;
             })
@@ -1461,16 +1473,16 @@ function renderPlanner() {
       </div>
     </section>
 
-    <section class="planner-panel" data-planner-panel="analysis" role="tabpanel" hidden>
+    <section id="plannerPanelAnalysis" class="planner-panel" data-planner-panel="analysis" role="tabpanel" aria-labelledby="plannerTabAnalysis" tabindex="0" hidden>
       <div class="notice analysis-explainer"><strong>How to read this</strong><p>A direct slot is an exercise mainly targeting that muscle. Effective sets also give partial credit when a compound exercise trains it meaningfully.</p></div>
       ${weeklyCoverageHtml(program)}
       ${weeklyVolumeHtml(program)}
     </section>
 
     <div class="planner-actions">
-      <button id="acceptProgram" class="btn primary">Accept programme</button>
-      <button id="anotherProgram" class="btn">Generate another</button>
-      <button id="adjustProfile" class="btn ghost">Adjust profile</button>
+      <button id="acceptProgram" class="btn primary" type="button">Accept programme</button>
+      <button id="anotherProgram" class="btn" type="button">Generate another</button>
+      <button id="adjustProfile" class="btn ghost" type="button">Adjust profile</button>
     </div>
     `;
 
@@ -1479,12 +1491,28 @@ function renderPlanner() {
       panel.hidden = panel.dataset.plannerPanel !== panelName;
     });
     $$('[data-planner-tab]').forEach((button) => {
-      button.setAttribute("aria-selected", String(button.dataset.plannerTab === panelName));
+      const selected = button.dataset.plannerTab === panelName;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
     });
   }
 
   $$('[data-planner-tab]').forEach((button) => {
     button.onclick = () => showPlannerPanel(button.dataset.plannerTab);
+    button.onkeydown = (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = $$('[data-planner-tab]');
+      const currentIndex = tabs.indexOf(button);
+      const nextIndex = event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? tabs.length - 1
+          : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      const nextTab = tabs[nextIndex];
+      showPlannerPanel(nextTab.dataset.plannerTab);
+      nextTab.focus();
+    };
   });
 
   bindWorkoutActions();
@@ -1492,7 +1520,7 @@ function renderPlanner() {
     $$(".planner-workout").forEach((details) => {
       details.open = details.dataset.hasIssues === "true";
     });
-    $(".planner-workout[data-has-issues='true']")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    $(".planner-workout[data-has-issues='true']")?.scrollIntoView({ behavior: preferredScrollBehavior(), block: "start" });
   });
   $("#programmeReviewForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1585,9 +1613,9 @@ function renderToday() {
           </div>
         </div>
         <div class="actions">
-          <button id="continueDraft" class="btn primary">${draft ? "Continue recommendation" : "Build recommendation"}</button>
-          ${draft ? '<button id="newDraft" class="btn">Generate another</button>' : ""}
-          <button id="editDraftProfile" class="btn ghost">Adjust profile</button>
+          <button id="continueDraft" class="btn primary" type="button">${draft ? "Continue recommendation" : "Build recommendation"}</button>
+          ${draft ? '<button id="newDraft" class="btn" type="button">Generate another</button>' : ""}
+          <button id="editDraftProfile" class="btn ghost" type="button">Adjust profile</button>
         </div>
       </article>`;
 
@@ -1671,7 +1699,7 @@ function renderToday() {
         <div>
           <div class="eyebrow">Last recorded workout</div>
           <h2>${escapeHtml(latestSession.workoutName || "Workout")}</h2>
-          <p>${escapeHtml(status)} · ${new Date(latestSession.completedAt).toLocaleDateString()} · ${latestMetrics.completedSets}/${latestMetrics.totalSets} sets completed</p>
+          <p>${escapeHtml(status)} · ${new Date(latestSession.completedAt).toLocaleDateString()} · ${countLabel(latestMetrics.completedSets, "set")} completed of ${latestMetrics.totalSets}</p>
         </div>
         <div class="metric"><strong>${Number(weightForDisplay(latestMetrics.volume, weightUnit())).toLocaleString()}</strong><span>${weightUnit()}-rep volume</span></div>
       </div>
@@ -1690,20 +1718,20 @@ function renderToday() {
         <div>
           <div class="eyebrow">Training week ${week} of ${program.durationWeeks} · ${escapeHtml(todaySchedule.label)}</div>
           <h2>${escapeHtml(state.activeSession?.workoutName || workout.name)}</h2>
-          <p>${workout.exercises.length} exercises · approximately ${program.sessionMinutes} minutes</p>
+          <p>${countLabel(workout.exercises.length, "exercise")} · approximately ${program.sessionMinutes} minutes</p>
           <small>Preferred days: ${weekdaySummary(trainingWeekdays)}. Missed calendar days do not skip this workout.</small>
           ${workoutMuscleChipsHtml(workout)}
         </div>
-        <div class="metric"><strong>${completedSessions}/${totalSessions}</strong><span>sessions</span></div>
+        <div class="metric"><strong>${completedSessions}/${totalSessions}</strong><span>${Number(totalSessions) === 1 ? "session" : "sessions"}</span></div>
       </div>
-      <div class="progress-track"><span style="width:${percent}%"></span></div>
+      <div class="progress-track" role="progressbar" aria-label="Programme sessions completed" aria-valuemin="0" aria-valuemax="${totalSessions}" aria-valuenow="${completedSessions}"><span style="width:${percent}%"></span></div>
       <div class="chips programme-context">
         <span class="chip">This training week: ${completedThisWeek}/${program.daysPerWeek} complete</span>
         <span class="chip">Programme: ${remainingSessions} session${remainingSessions === 1 ? "" : "s"} remaining</span>
       </div>
       <div class="actions">
-        <button id="startSession" class="btn primary">${state.activeSession ? "Resume workout" : "Start workout"}</button>
-        <button id="previewRoutine" class="btn">View routine</button>
+        <button id="startSession" class="btn primary" type="button">${state.activeSession ? "Resume workout" : "Start workout"}</button>
+        <button id="previewRoutine" class="btn" type="button">View routine</button>
       </div>
     </article>
     <div class="card readiness-card">
@@ -1833,7 +1861,7 @@ function renderSession({ focusHeading = false } = {}) {
           <div class="eyebrow">${escapeHtml(session.workoutName)} · Exercise ${session.currentIndex + 1}/${session.exercises.length}</div>
           <h1 id="sessionExerciseHeading" tabindex="-1">${escapeHtml(exercise.name)}</h1>
         </div>
-        <button id="exitSession" class="btn ghost small">Exit</button>
+        <button id="exitSession" class="btn ghost small" type="button">Exit</button>
       </div>
       <div class="progress-track" role="progressbar" aria-label="Workout sets completed" aria-valuemin="0" aria-valuemax="${totalSets}" aria-valuenow="${completedSets}"><span style="width:${(completedSets / totalSets) * 100}%"></span></div>
       <article class="card" style="margin-top:14px">
@@ -1843,10 +1871,10 @@ function renderSession({ focusHeading = false } = {}) {
             <h2>${escapeHtml(exercise.name)}</h2>
             <p>${labelize(exercise.app.group)} · ${labelize(exercise.equipment)} · target: ${escapeHtml(exercise.target)}</p>
           </div>
-          <button id="toggleMedia" class="btn small">Show animation</button>
+          <button id="toggleMedia" class="btn small" type="button" aria-pressed="false">Show animation</button>
         </div>
         <div class="chips">
-          <span class="chip">${item.sets} sets</span>
+          <span class="chip">${countLabel(item.sets, "set")}</span>
           <span class="chip">${item.reps}</span>
           <span class="chip">${item.restSeconds}s rest</span>
           ${item.targetRole ? `<span class="chip">${escapeHtml(trainingRoleText(item))}${item.roleMatch && item.roleMatch !== "exact" ? ` · ${escapeHtml(roleCoverageText(item))}` : ""}</span>` : ""}
@@ -1860,7 +1888,7 @@ function renderSession({ focusHeading = false } = {}) {
           ? `<details><summary>How to perform it</summary><ol class="instructions">${instructions.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></details>`
           : '<div class="notice"><strong>Instructions unavailable</strong><p>Use the visual only if you already know this movement. Otherwise choose a substitute with clear instructions.</p></div>'}
         <details class="warmup-guidance"><summary>Warm up before working sets</summary><p>Use 1–3 gradual practice sets with an easy load and controlled range of motion. Warm-up sets are not logged as working sets below.</p></details>
-        <button id="reportPain" class="btn danger small" type="button" aria-expanded="${Boolean(item.painReported)}">Pain or unusual symptoms during this movement</button>
+        <button id="reportPain" class="btn danger small" type="button" aria-expanded="${Boolean(item.painReported)}" aria-controls="painGuidance">Pain or unusual symptoms during this movement</button>
         <div id="painGuidance" class="notice pain-guidance" role="alert" tabindex="-1" ${item.painReported ? "" : "hidden"}>
           <strong>Stop this movement</strong>
           <p>Do not train through sharp or worsening pain. You can choose a pain-free substitute or stop this workout. Seek qualified medical advice when appropriate.</p>
@@ -1892,13 +1920,13 @@ function renderSession({ focusHeading = false } = {}) {
           .join("")}</div>
       </article>
       <div class="actions">
-        <button id="replaceToday" class="btn">Choose substitute for today</button>
-        <button id="replaceRoutine" class="btn">Choose substitute for routine</button>
-        <button id="machineUnavailable" class="btn danger">Not available at this gym</button>
+        <button id="replaceToday" class="btn" type="button">Choose substitute for today</button>
+        <button id="replaceRoutine" class="btn" type="button">Choose substitute for routine</button>
+        <button id="machineUnavailable" class="btn danger" type="button">Not available at this gym</button>
       </div>
       <div class="actions">
-        <button id="prevExercise" class="btn ghost" ${session.currentIndex === 0 ? "disabled" : ""}>Previous</button>
-        <button id="nextExercise" class="btn primary">${session.currentIndex === session.exercises.length - 1 ? "Finish workout" : "Next exercise"}</button>
+        <button id="prevExercise" class="btn ghost" type="button" ${session.currentIndex === 0 ? "disabled" : ""}>Previous</button>
+        <button id="nextExercise" class="btn primary" type="button">${session.currentIndex === session.exercises.length - 1 ? "Finish workout" : "Next exercise"}</button>
       </div>
       <div id="restTimer"></div>
     </div>`;
@@ -1908,6 +1936,7 @@ function renderSession({ focusHeading = false } = {}) {
     showingAnimation = !showingAnimation;
     $("#sessionMedia").src = mediaUrl(showingAnimation ? exercise.gif_url : exercise.image);
     $("#toggleMedia").textContent = showingAnimation ? "Show image" : "Show animation";
+    $("#toggleMedia").setAttribute("aria-pressed", String(showingAnimation));
   };
 
   function syncSetRow(row) {
@@ -2507,7 +2536,7 @@ function renderRoutine() {
   if (!program) {
     $("#routineView").innerHTML = `
       <div class="hero"><h1>No active routine</h1><p>Your recommendation must be accepted before it becomes a routine.</p></div>
-      <div class="card"><button id="routineContinueDraft" class="btn primary">Continue recommendation</button></div>`;
+      <div class="card"><button id="routineContinueDraft" class="btn primary" type="button">Continue recommendation</button></div>`;
     $("#routineContinueDraft").onclick = () => {
       renderPlanner();
       view("plannerView");
@@ -2933,8 +2962,8 @@ function renderProfile() {
         ${(profile.constraints || []).map((constraint) => `<span class="chip">${CONSTRAINTS[constraint]}</span>`).join("")}
       </div>
       <div class="actions">
-        ${!state.activeProgram && state.draftProgram ? '<button id="profileContinueDraft" class="btn primary">Continue recommendation</button>' : ""}
-        <button id="editProfile" class="btn ${!state.activeProgram && state.draftProgram ? "" : "primary"}">Edit programme inputs</button>
+        ${!state.activeProgram && state.draftProgram ? '<button id="profileContinueDraft" class="btn primary" type="button">Continue recommendation</button>' : ""}
+        <button id="editProfile" class="btn ${!state.activeProgram && state.draftProgram ? "" : "primary"}" type="button">Edit programme inputs</button>
       </div>
     </div>
     <div class="card">
@@ -2977,9 +3006,9 @@ function renderProfile() {
       ${backupStatusHtml(preferences)}
       <p>Export the profile, routine, gym observations and history to create or update a portable backup.</p>
       <div class="actions">
-        <button id="exportData" class="btn">Create backup file</button>
+        <button id="exportData" class="btn" type="button">Create backup file</button>
         <label class="btn">Import data<input id="importData" type="file" accept="application/json" hidden></label>
-        <button id="resetData" class="btn danger">Reset all local data</button>
+        <button id="resetData" class="btn danger" type="button">Reset all local data</button>
       </div>
     </div>
     <div class="card">
@@ -2990,7 +3019,7 @@ function renderProfile() {
             .map((id) => `<div><span>${escapeHtml(exerciseById(id)?.name || id)}</span><button type="button" class="btn ghost small" data-restore-availability="${escapeHtml(id)}">Make available</button></div>`)
             .join("")}</div>`
         : ""}
-      <button id="resetGym" class="btn ghost" ${state.gym.unavailableExerciseIds.length ? "" : "disabled"}>Clear all unavailable items</button>
+      <button id="resetGym" class="btn ghost" type="button" ${state.gym.unavailableExerciseIds.length ? "" : "disabled"}>Clear all unavailable items</button>
     </div>`;
 
   $("#profileContinueDraft")?.addEventListener("click", () => {
@@ -3180,7 +3209,7 @@ async function init() {
       offline
         ? "This device is offline and does not yet have a complete saved exercise library. Connect once to finish setup."
         : `The exercise source could not be reached. ${escapeHtml(error.message)}`
-    }</p><p>Your profile data has not been changed.</p><button id="retryDataset" class="btn primary">Retry</button></div>`;
+    }</p><p>Your profile data has not been changed.</p><button id="retryDataset" class="btn primary" type="button">Retry</button></div>`;
     $("#retryDataset").onclick = () => location.reload();
   }
 }
