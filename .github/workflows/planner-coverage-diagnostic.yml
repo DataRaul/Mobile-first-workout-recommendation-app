@@ -6,7 +6,7 @@ on:
       - "analysis/planner-coverage-consistency"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnostic:
@@ -17,19 +17,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Apply candidate policy
+        run: python scripts/apply-planner-candidate.py
+      - name: Validate repository and self-contained regressions
+        run: npm run validate
+      - name: Verify enrichment reproducibility
+        run: npm run enrichment:check
       - name: Download verified real exercise source
         run: |
           curl -fsSL https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/data/exercises.json -o /tmp/exercises.json
           printf '%s  %s\n' '656634224b8977b99a6d765470ee123260d4979715eaa4e7c0b7c8bb0d79f93d' '/tmp/exercises.json' | sha256sum -c -
-      - name: Baseline matrix and classification
+      - name: Run real recommendation matrix
+        run: npm run test:matrix -- --source /tmp/exercises.json
+      - name: Persist validated planner policy on analysis branch
         run: |
-          npm run test:matrix -- --source /tmp/exercises.json
-          node scripts/diagnose-planner-coverage.mjs --source /tmp/exercises.json --label baseline
-      - name: Apply candidate policy locally
-        run: python scripts/apply-planner-candidate.py
-      - name: Candidate matrix and classification
-        run: |
-          npm run test:matrix -- --source /tmp/exercises.json
-          node scripts/diagnose-planner-coverage.mjs --source /tmp/exercises.json --label candidate
-      - name: Run self-contained programme regression
-        run: node scripts/test-programme.mjs
+          if git diff --quiet -- src/programme.js; then
+            echo "No source change to persist."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/programme.js
+          git commit -m "Prefer exact programme coverage over novelty"
+          git push
