@@ -1553,8 +1553,85 @@ function prescriptionChanges(previousItem, nextItem) {
   return changes;
 }
 
+function repetitionBounds(value) {
+  const values = String(value || "").match(/\d+/g)?.map(Number) || [];
+  return {
+    min: values[0] || 1,
+    max: values[values.length - 1] || values[0] || 999,
+  };
+}
+
+export function continuationSuggestion(previousProgram, nextItem) {
+  const performance = previousProgram?.performanceByExercise?.[nextItem?.exerciseId];
+  if (!performance?.sets?.length) {
+    return { type: "steady", reason: "No completed sets were available to justify an automatic adjustment." };
+  }
+
+  const review = previousProgram?.review || {};
+  const bounds = repetitionBounds(nextItem.reps);
+  const completed = performance.sets.filter((set) => Number(set.reps) > 0);
+  const weighted = completed.some((set) => Number(set.weight) > 0);
+  const allAtTop = completed.length > 0 && completed.every((set) => Number(set.reps) >= bounds.max);
+  const reserveSupportsProgression = completed.every(
+    (set) => String(set.rir || "").trim() && Number(set.rir) >= 2,
+  );
+  const needsReduction =
+    review.outcome === "too_hard" ||
+    review.recovery === "poor" ||
+    review.symptoms === "yes";
+  const requestedProgress = review.outcome === "too_easy" && review.recovery === "good";
+  const earnedProgress = allAtTop && reserveSupportsProgression;
+
+  if (needsReduction) {
+    return {
+      type: "reduced",
+      weightMultiplier: 0.9,
+      repDelta: weighted ? 0 : -1,
+      minReps: bounds.min,
+      reason: review.symptoms === "yes"
+        ? "New or worsening symptoms were reported; start conservatively and use a pain-free substitute when needed."
+        : "The completed block was reported as too hard or poorly recovered, so the starting load is reduced by 10%.",
+    };
+  }
+
+  if ((requestedProgress || earnedProgress) && weighted && allAtTop) {
+    return {
+      type: "progressed_load",
+      weightMultiplier: 1.025,
+      resetRepsTo: bounds.min,
+      reason: requestedProgress
+        ? "The block felt easier than expected with good recovery and the top of the repetition range was achieved."
+        : "Every recorded set reached the top of the range with sufficient repetitions in reserve.",
+    };
+  }
+
+  if (requestedProgress || earnedProgress) {
+    return {
+      type: "progressed_reps",
+      repDelta: 1,
+      maxReps: allAtTop && !weighted ? bounds.max + 1 : bounds.max,
+      reason: requestedProgress
+        ? "The block felt easier than expected with good recovery, so repetitions progress before load."
+        : "Recorded performance supports a small repetition increase while load stays stable.",
+    };
+  }
+
+  return {
+    type: "steady",
+    reason: "The last recorded values are retained until the repetition range and recovery support progression.",
+  };
+}
+
 export function comparePrograms(previousProgram, nextProgram) {
-  const summary = { retained: 0, replaced: 0, added: 0, removed: 0, adjusted: 0 };
+  const summary = {
+    retained: 0,
+    progressed: 0,
+    reduced: 0,
+    replaced: 0,
+    added: 0,
+    removed: 0,
+    adjusted: 0,
+  };
   const retainedExerciseIds = new Set();
   const workouts = [];
   const previousWorkouts = previousProgram?.workouts || [];
@@ -1587,6 +1664,12 @@ export function comparePrograms(previousProgram, nextProgram) {
       const changes = previousItem ? prescriptionChanges(previousItem, nextItem) : [];
       summary[status] += 1;
       if (status === "retained") retainedExerciseIds.add(nextItem.exerciseId);
+      if (status === "retained" && nextItem.continuation?.type?.startsWith("progressed")) {
+        summary.progressed += 1;
+      }
+      if (status === "retained" && nextItem.continuation?.type === "reduced") {
+        summary.reduced += 1;
+      }
       if (changes.length) summary.adjusted += 1;
 
       entries.push({
@@ -1647,10 +1730,21 @@ export function summarizeProgramChanges(previousProgram, nextProgram) {
 export function linkProgramContinuation(nextProgram, previousProgram) {
   if (!nextProgram || !previousProgram) return nextProgram;
   const comparison = comparePrograms(previousProgram, nextProgram);
+  const retained = new Set(comparison.retainedExerciseIds);
   return {
     ...nextProgram,
     predecessorProgramId: previousProgram.id,
     carryForwardExerciseIds: comparison.retainedExerciseIds,
+    continuationReview: previousProgram.review || null,
+    workouts: (nextProgram.workouts || []).map((workout) => ({
+      ...workout,
+      exercises: (workout.exercises || []).map((item) => ({
+        ...item,
+        continuation: retained.has(item.exerciseId)
+          ? continuationSuggestion(previousProgram, item)
+          : null,
+      })),
+    })),
   };
 }
 
@@ -1667,10 +1761,27 @@ export function carriedForwardSets(program, previousProgram, item) {
 
   return Array.from({ length: Number(item.sets) || 0 }, (_, index) => {
     const previousSet = performance.sets?.[index];
+    const suggestion = item.continuation || { type: "steady" };
+    const previousWeight = Number(previousSet?.weight);
+    const adjustedWeight =
+      previousSet?.weight && suggestion.weightMultiplier && Number.isFinite(previousWeight)
+        ? String(Math.round(previousWeight * suggestion.weightMultiplier * 2) / 2)
+        : previousSet?.weight || "";
+    const previousReps = Number(previousSet?.reps);
+    const adjustedReps = suggestion.resetRepsTo
+      ? String(suggestion.resetRepsTo)
+      : suggestion.repDelta && Number.isFinite(previousReps)
+        ? String(
+            Math.max(
+              suggestion.minReps || 1,
+              Math.min(suggestion.maxReps || 999, previousReps + suggestion.repDelta),
+            ),
+          )
+        : previousSet?.reps || "";
     return {
       set: index + 1,
-      weight: previousSet?.weight || "",
-      reps: previousSet?.reps || "",
+      weight: adjustedWeight,
+      reps: adjustedReps,
       rir: previousSet?.rir || "",
       done: false,
     };
