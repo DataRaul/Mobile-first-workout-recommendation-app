@@ -1,3 +1,4 @@
+export const APP_VERSION = "3.7.0";
 export const DATASET_URL = "https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/data/exercises.json";
 export const MEDIA_BASE_URL = "https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/";
 export const DATASET_REPOSITORY = "https://github.com/hasaneyldrm/exercises-dataset";
