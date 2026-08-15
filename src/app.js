@@ -183,7 +183,13 @@ function currentDeviceLabel() {
 }
 
 function backupMessage(backup) {
-  return `Backup saved as ${backup.fileName} in ${backup.location}.`;
+  return `Backup saved as ${backup.fileName} in ${backup.location}. It was not sent to GitHub or any server.`;
+}
+
+function exportLocationHelp() {
+  return typeof window.showSaveFilePicker === "function"
+    ? "Export opens a Save dialog so you can choose the folder and filename on this device."
+    : "Export creates a JSON file in the Downloads location selected by this browser or device.";
 }
 
 function backupStatusHtml(preferences) {
@@ -2975,11 +2981,12 @@ function renderProfile() {
       <h2>Where your data is saved</h2>
       <p><strong>Live copy:</strong> This browser on ${deviceLabel}. It is not stored in an account or automatically synced to another device.</p>
       ${backupStatusHtml(preferences)}
-      <p>Export the profile, routine, gym observations and history to create or update a portable backup.</p>
+      <p><strong>Export to this device:</strong> ${escapeHtml(exportLocationHelp())} The file is never saved to GitHub, the repository owner, an account or any server.</p>
+      <p>Import lets you select a previously exported JSON file and restore it in this browser after preview and confirmation.</p>
       <div class="actions">
-        <button id="exportData" class="btn">Create backup file</button>
-        <label class="btn">Import data<input id="importData" type="file" accept="application/json" hidden></label>
-        <button id="resetData" class="btn danger">Reset all local data</button>
+        <button id="exportData" class="btn">Export data file</button>
+        <label class="btn">Import data file<input id="importData" type="file" accept="application/json,.json" hidden></label>
+        <button id="resetData" class="btn danger">Delete local data</button>
       </div>
     </div>
     <div class="card">
