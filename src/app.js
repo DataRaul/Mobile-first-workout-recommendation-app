@@ -21,7 +21,13 @@ import {
   workoutDaysForProfile,
   WORKOUT_TYPES,
 } from "./programme.js";
-import { sessionCompletion, updateSetLogValue } from "./session.js";
+import {
+  latestRecordedSession,
+  READINESS_GUIDANCE,
+  sessionCompletion,
+  sessionMetrics,
+  updateSetLogValue,
+} from "./session.js";
 import {
   defaultTrainingWeekdays,
   normalizeTrainingWeekdays,
@@ -1418,6 +1424,52 @@ function renderToday() {
     program.daysPerWeek,
   );
   const todaySchedule = scheduleStatus(trainingWeekdays);
+  const completedThisWeek = completedSessions % program.daysPerWeek;
+  const remainingSessions = Math.max(0, totalSessions - completedSessions);
+  const latestSession = latestRecordedSession(state.history);
+  const latestMetrics = latestSession ? sessionMetrics(latestSession) : null;
+  const readinessDate = new Date().toISOString().slice(0, 10);
+  const savedReadiness =
+    state.preferences.readinessCheck?.date === readinessDate
+      ? state.preferences.readinessCheck.value
+      : null;
+
+  function readinessHtml(value) {
+    const option = READINESS_GUIDANCE[value];
+    return option
+      ? `<div id="readinessGuidance" class="notice" role="status"><strong>${escapeHtml(option.label)}</strong><p>${escapeHtml(option.guidance)}</p></div>`
+      : '<div id="readinessGuidance" class="notice subtle" role="status"><p>Select how you feel for optional adjustments. This does not change or advance your programme.</p></div>';
+  }
+
+  function lastSessionHtml() {
+    if (!latestSession) {
+      return '<div class="card"><h2>Last workout</h2><p>No workout has been recorded yet. Your first completed or partial session will appear here.</p></div>';
+    }
+    const loggedExercises = (latestSession.exercises || [])
+      .map((item) => {
+        const performed = (item.setsLog || [])
+          .filter((set) => set.done)
+          .map((set) => `${set.weight || "—"} kg × ${set.reps || "—"}`)
+          .join(", ");
+        if (!performed) return "";
+        return `<li><strong>${escapeHtml(exerciseById(item.exerciseId)?.name || item.exerciseId)}</strong><span>${escapeHtml(performed)}</span></li>`;
+      })
+      .filter(Boolean)
+      .slice(0, 4)
+      .join("");
+    const status = latestSession.status === "partial" ? "Partial workout" : "Completed workout";
+    return `<div class="card last-session-card">
+      <div class="summary-row">
+        <div>
+          <div class="eyebrow">Last recorded workout</div>
+          <h2>${escapeHtml(latestSession.workoutName || "Workout")}</h2>
+          <p>${escapeHtml(status)} · ${new Date(latestSession.completedAt).toLocaleDateString()} · ${latestMetrics.completedSets}/${latestMetrics.totalSets} sets completed</p>
+        </div>
+        <div class="metric"><strong>${latestMetrics.volume.toLocaleString()}</strong><span>kg-rep volume</span></div>
+      </div>
+      ${loggedExercises ? `<ul class="performance-list">${loggedExercises}</ul>` : "<p>No completed set values were recorded.</p>"}
+    </div>`;
+  }
 
   $("#todayView").innerHTML = `
     <div class="hero">
@@ -1437,11 +1489,26 @@ function renderToday() {
         <div class="metric"><strong>${completedSessions}/${totalSessions}</strong><span>sessions</span></div>
       </div>
       <div class="progress-track"><span style="width:${percent}%"></span></div>
+      <div class="chips programme-context">
+        <span class="chip">This training week: ${completedThisWeek}/${program.daysPerWeek} complete</span>
+        <span class="chip">Programme: ${remainingSessions} session${remainingSessions === 1 ? "" : "s"} remaining</span>
+      </div>
       <div class="actions">
         <button id="startSession" class="btn primary">${state.activeSession ? "Resume workout" : "Start workout"}</button>
         <button id="previewRoutine" class="btn">View routine</button>
       </div>
     </article>
+    <div class="card readiness-card">
+      <h2>Quick readiness check</h2>
+      <p>How do you feel before this workout?</p>
+      <div class="readiness-options" role="group" aria-label="Readiness before this workout">
+        ${Object.entries(READINESS_GUIDANCE)
+          .map(([value, option]) => `<button type="button" class="btn small" data-readiness="${value}" aria-pressed="${savedReadiness === value}">${escapeHtml(option.label)}</button>`)
+          .join("")}
+      </div>
+      ${readinessHtml(savedReadiness)}
+    </div>
+    ${lastSessionHtml()}
     <div class="card">
       <h2>Programme rules</h2>
       <p>${escapeHtml(program.progression)}</p>
@@ -1457,6 +1524,17 @@ function renderToday() {
     renderRoutine();
     view("routineView");
   };
+  $$('[data-readiness]').forEach((button) => {
+    button.onclick = () => {
+      const value = button.dataset.readiness;
+      state.preferences.readinessCheck = { date: readinessDate, value };
+      persist();
+      $$('[data-readiness]').forEach((option) => {
+        option.setAttribute("aria-pressed", String(option.dataset.readiness === value));
+      });
+      $("#readinessGuidance").outerHTML = readinessHtml(value);
+    };
+  });
 }
 
 function createSession() {
