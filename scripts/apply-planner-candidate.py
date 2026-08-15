@@ -12,6 +12,10 @@ new = """        if (alternative && selectionQuality(alternative) <= selectionQu
           // muscle, role, or difficulty fit. Exact programme coverage outranks novelty.
           selection = alternative;
         }"""
-if old not in text:
+if new in text:
+    print("planner candidate policy already applied")
+elif old in text:
+    path.write_text(text.replace(old, new, 1))
+    print("planner candidate policy applied")
+else:
     raise SystemExit("candidate patch target not found")
-path.write_text(text.replace(old, new, 1))
