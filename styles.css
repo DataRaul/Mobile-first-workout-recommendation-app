@@ -654,6 +654,96 @@ legend {
   border-top: 1px solid var(--line);
 }
 
+.planner-panel[hidden] {
+  display: none !important;
+}
+
+.planner-tabs {
+  position: sticky;
+  top: 72px;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(16, 19, 26, 0.94);
+  backdrop-filter: blur(16px);
+}
+
+.planner-tabs button {
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.planner-tabs button[aria-selected="true"] {
+  border-color: var(--accent);
+  background: rgba(142, 227, 178, 0.1);
+  color: var(--text);
+}
+
+.planner-workout-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.planner-workout {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.planner-workout > summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 13px;
+  cursor: pointer;
+}
+
+.planner-workout > summary strong,
+.planner-workout > summary small {
+  display: block;
+}
+
+.planner-workout > summary small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.planner-workout > .programme-workout {
+  margin: 0;
+  padding: 0 13px 13px;
+}
+
+.planner-actions {
+  position: sticky;
+  bottom: 10px;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(16, 19, 26, 0.95);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+}
+
+.analysis-explainer {
+  margin-bottom: 14px;
+}
+
 .exercise-line {
   display: grid;
   grid-template-columns: 34px 1fr auto;

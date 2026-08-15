@@ -480,7 +480,7 @@ function weeklyCoverageHtml(program) {
         </div>
         <div class="metric"><strong>${coverage.totalExerciseSlots}</strong><span>weekly exercise slots</span></div>
       </div>
-      ${coverage.capacityLimited ? '<div class="notice"><strong>Schedule-limited coverage</strong><p>This combination of days and session length cannot provide two direct exercise slots for every planned muscle. Compound exercises and effective-set credit maintain broader coverage; add time or a training day for more direct work.</p></div>' : ""}
+      ${coverage.capacityLimited ? '<div class="notice capacity-note"><strong>Lower direct-volume schedule</strong><p>This plan is still usable and every planned muscle receives coverage. Shorter or fewer sessions mean some muscles receive one direct exercise plus meaningful work from compound exercises. Add time or another day only if you want more direct work.</p></div>' : ""}
       ${coverage.availabilityShortfall ? `<div class="notice"><strong>Safe-candidate limit</strong><p>The active difficulty, equipment, goal and safety filters provide ${coverage.totalExerciseSlots} of ${coverage.requestedExerciseSlots} requested weekly slots. The planner leaves the remaining slots empty instead of exceeding your profile difficulty or repeating an exercise inside one workout.</p></div>` : ""}
       <div class="grid two coverage-grid">
         ${entries
@@ -1181,6 +1181,15 @@ function renderPlanner() {
     persist();
     program = state.draftProgram;
   }
+  const issueCount = program.workouts
+    .flatMap((workout) => workout.exercises)
+    .filter(
+      (item) =>
+        item.groupMatch === "companion" ||
+        ![null, undefined, "exact"].includes(item.roleMatch) ||
+        item.difficultyDelta ||
+        item.constraintNotes?.some((note) => note.status === "caution"),
+    ).length;
 
   $("#plannerView").innerHTML = `
     <div class="hero">
@@ -1194,39 +1203,92 @@ function renderPlanner() {
         <span class="chip">${profileComplexityText()}</span>
       </div>
     </div>
-    <div class="card saved-draft-card">
-      <div>
-        <div class="eyebrow">Saved automatically</div>
-        <h2>Your recommendation will still be here</h2>
-        <p>You do not have to accept it now. You can leave, reopen the app, and continue reviewing this same draft.</p>
-      </div>
-      <button id="continueLater" class="btn ghost">Continue later</button>
+    <div class="planner-tabs" role="tablist" aria-label="Recommendation review sections">
+      <button type="button" role="tab" data-planner-tab="overview" aria-selected="true">Overview</button>
+      <button type="button" role="tab" data-planner-tab="week" aria-selected="false">Weekly plan</button>
+      <button type="button" role="tab" data-planner-tab="analysis" aria-selected="false">Analysis</button>
     </div>
-    ${programmeComparisonHtml(state.previousProgram, program)}
-    <div class="card">
-      <h2>Why this fits</h2>
-      <p>The routine first balances direct muscle slots across the selected week, then chooses complementary training roles, equipment-compatible exercises and goal-specific prescriptions. Your experience level is never exceeded automatically.</p>
-      ${program.structureNote ? `<div class="notice"><strong>Goal-aware structure</strong><p>${escapeHtml(program.structureNote)}</p></div>` : ""}
-      <div class="notice"><strong>Progression:</strong> ${escapeHtml(program.progression)}</div>
-    </div>
-    ${weeklyCoverageHtml(program)}
-    ${weeklyVolumeHtml(program)}
-    <div class="card">
-      <div class="summary-row">
+
+    <section class="planner-panel" data-planner-panel="overview" role="tabpanel">
+      <div class="card saved-draft-card">
         <div>
-          <h2>Weekly routine</h2>
-          <p>Review every exercise. Use Substitute to choose a different eligible exercise yourself before accepting.</p>
+          <div class="eyebrow">Saved automatically</div>
+          <h2>Your recommendation will still be here</h2>
+          <p>You do not have to accept it now. You can leave, reopen the app, and continue reviewing this same draft.</p>
+        </div>
+        <button id="continueLater" class="btn ghost">Continue later</button>
+      </div>
+      ${programmeComparisonHtml(state.previousProgram, program)}
+      <div class="card">
+        <h2>Why this fits</h2>
+        <p>The routine first balances muscles across your selected week, then chooses goal-, equipment-, difficulty- and safety-compatible exercises. Your experience ceiling is never exceeded automatically.</p>
+        ${program.structureNote ? `<div class="notice"><strong>Goal-aware structure</strong><p>${escapeHtml(program.structureNote)}</p></div>` : ""}
+        <div class="notice"><strong>Progression:</strong> ${escapeHtml(program.progression)}</div>
+      </div>
+    </section>
+
+    <section class="planner-panel" data-planner-panel="week" role="tabpanel" hidden>
+      <div class="card">
+        <div class="summary-row">
+          <div>
+            <h2>Weekly routine</h2>
+            <p>Open each day to review exercises. Substitutions remain inside your profile limits.</p>
+          </div>
+          ${issueCount ? `<button id="reviewPlannerIssues" class="btn small" type="button">Review ${issueCount} fallback${issueCount === 1 ? "" : "s"}</button>` : ""}
+        </div>
+        <div class="planner-workout-list">
+          ${program.workouts
+            .map((workout, index) => {
+              const hasIssues = workout.exercises.some(
+                (item) =>
+                  item.groupMatch === "companion" ||
+                  ![null, undefined, "exact"].includes(item.roleMatch) ||
+                  item.difficultyDelta ||
+                  item.constraintNotes?.some((note) => note.status === "caution"),
+              );
+              return `<details class="planner-workout" data-has-issues="${hasIssues}" ${index === 0 ? "open" : ""}>
+                <summary><span><strong>${escapeHtml(workout.name)}</strong><small>${workout.exercises.length} exercises · about ${program.sessionMinutes} minutes</small></span><div>${workoutMuscleChipsHtml(workout)}</div></summary>
+                ${workoutHtml(workout, { editable: true, scope: "draft" })}
+              </details>`;
+            })
+            .join("")}
         </div>
       </div>
-      ${program.workouts.map((workout) => workoutHtml(workout, { editable: true, scope: "draft" })).join("")}
-    </div>
-    <div class="actions">
+    </section>
+
+    <section class="planner-panel" data-planner-panel="analysis" role="tabpanel" hidden>
+      <div class="notice analysis-explainer"><strong>How to read this</strong><p>A direct slot is an exercise mainly targeting that muscle. Effective sets also give partial credit when a compound exercise trains it meaningfully.</p></div>
+      ${weeklyCoverageHtml(program)}
+      ${weeklyVolumeHtml(program)}
+    </section>
+
+    <div class="planner-actions">
       <button id="acceptProgram" class="btn primary">Accept programme</button>
       <button id="anotherProgram" class="btn">Generate another</button>
       <button id="adjustProfile" class="btn ghost">Adjust profile</button>
-    </div>`;
+    </div>
+    `;
+
+  function showPlannerPanel(panelName) {
+    $$('[data-planner-panel]').forEach((panel) => {
+      panel.hidden = panel.dataset.plannerPanel !== panelName;
+    });
+    $$('[data-planner-tab]').forEach((button) => {
+      button.setAttribute("aria-selected", String(button.dataset.plannerTab === panelName));
+    });
+  }
+
+  $$('[data-planner-tab]').forEach((button) => {
+    button.onclick = () => showPlannerPanel(button.dataset.plannerTab);
+  });
 
   bindWorkoutActions();
+  $("#reviewPlannerIssues")?.addEventListener("click", () => {
+    $$(".planner-workout").forEach((details) => {
+      details.open = details.dataset.hasIssues === "true";
+    });
+    $(".planner-workout[data-has-issues='true']")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   $("#acceptProgram").onclick = () => {
     state.activeProgram = acceptProgram(program);
     state.draftProgram = null;
