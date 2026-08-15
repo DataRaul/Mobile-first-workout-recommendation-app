@@ -19,5 +19,59 @@
         "requires_manual_classification"
       ]
     }
+  },
+  "0154": {
+    "movement": "horizontal_pull"
+  },
+  "0225": {
+    "movement": "horizontal_pull"
+  },
+  "0240": {
+    "movement": "horizontal_pull"
+  },
+  "0359": {
+    "movement": "horizontal_pull"
+  },
+  "0378": {
+    "movement": "horizontal_pull"
+  },
+  "0383": {
+    "movement": "horizontal_pull"
+  },
+  "0386": {
+    "movement": "horizontal_pull"
+  },
+  "0601": {
+    "movement": "horizontal_pull"
+  },
+  "0602": {
+    "movement": "horizontal_pull"
+  },
+  "0993": {
+    "movement": "horizontal_pull"
+  },
+  "1421": {
+    "group": "triceps",
+    "parentGroup": "arms",
+    "movement": "horizontal_push",
+    "trainingRoles": [
+      "triceps_press"
+    ],
+    "setCredits": {
+      "arms": 0.5,
+      "chest": 0.5,
+      "shoulders": 0.5,
+      "triceps": 1
+    }
+  },
+  "3552": {
+    "movement": "cardio",
+    "trainingRoles": [],
+    "exerciseType": "conditioning",
+    "goalTags": [
+      "conditioning",
+      "endurance",
+      "general"
+    ]
   }
 }
