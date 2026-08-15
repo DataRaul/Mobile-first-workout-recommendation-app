@@ -701,7 +701,17 @@ function renderOnboarding(edit = false) {
       <button id="openHowItWorks" class="btn ghost small" type="button">How this app works</button>
     </div>
     <form id="profileForm" class="card grid">
-      <div class="grid two">
+      <ol class="profile-stepper" aria-label="Profile setup progress">
+        <li><button type="button" data-profile-step-button="1" aria-current="step"><span>1</span>Goal</button></li>
+        <li><button type="button" data-profile-step-button="2"><span>2</span>Schedule</button></li>
+        <li><button type="button" data-profile-step-button="3"><span>3</span>Setup</button></li>
+      </ol>
+
+      <section class="profile-step" data-profile-step="1">
+        <div class="eyebrow">Step 1 of 3</div>
+        <h2 tabindex="-1">Your training direction</h2>
+        <p>Start with the outcome and difficulty ceiling. You can compare every goal before choosing.</p>
+        <div class="grid two profile-field-grid">
         <label class="field">Name<input name="name" value="${escapeHtml(profile.name)}" placeholder="Your name"></label>
         <div class="goal-field">
           <div class="field-label-row"><label for="goalSelect">Primary goal</label><button id="compareGoals" class="text-button" type="button">Compare all goals</button></div>
@@ -713,6 +723,14 @@ function renderOnboarding(edit = false) {
         <label class="field">Experience<select name="level">${Object.entries(LEVELS)
           .map(([key, value]) => `<option value="${key}" ${profile.level === key ? "selected" : ""}>${value}</option>`)
           .join("")}</select><small>This is a hard maximum difficulty. Simpler exercises remain valid.</small></label>
+        </div>
+      </section>
+
+      <section class="profile-step" data-profile-step="2" hidden>
+        <div class="eyebrow">Step 2 of 3</div>
+        <h2 tabindex="-1">Your weekly schedule</h2>
+        <p>Choose a practical weekly structure. Individual day controls stay optional.</p>
+        <div class="grid two profile-field-grid">
         <label class="field">Training days per week<select name="daysPerWeek" id="daysPerWeekSelect">${[2, 3, 4, 5, 6]
           .map((number) => `<option value="${number}" ${selectedDaysPerWeek === number ? "selected" : ""}>${number}</option>`)
           .join("")}</select></label>
@@ -722,16 +740,24 @@ function renderOnboarding(edit = false) {
         <label class="field">Programme length<select name="durationWeeks">${[8, 10, 12, 16]
           .map((number) => `<option value="${number}" ${profile.durationWeeks == number ? "selected" : ""}>${number} weeks</option>`)
           .join("")}</select></label>
-      </div>
+        </div>
+        <fieldset class="profile-subsection">
+          <legend>Weekly workout structure</legend>
+          <label class="field">Starting split<select id="splitPresetSelect" name="splitPreset">${presetOptions()}</select></label>
+          <div id="splitSummary" class="split-summary" aria-live="polite"></div>
+          <details id="customizeWorkoutDays" class="day-customizer" ${selectedPreset === "custom" ? "open" : ""}>
+            <summary>Customize individual workout days</summary>
+            <p class="notice">Preset emphasis is only a recommendation priority. Changing a muscle selection turns on “Use only selected muscles” for that day.</p>
+            <div id="workoutDayEditor" class="grid"></div>
+          </details>
+        </fieldset>
+      </section>
 
-      <fieldset>
-        <legend>Weekly workout structure</legend>
-        <p class="notice">Choose a starting split, then customise any day. Preset workout types keep their broad structure. When you manually change the muscle selection, “Use only selected muscles” turns on so the recommendation stays inside those groups.</p>
-        <label class="field">Starting split<select id="splitPresetSelect" name="splitPreset">${presetOptions()}</select></label>
-        <div id="workoutDayEditor" class="grid"></div>
-      </fieldset>
-
-      <fieldset>
+      <section class="profile-step" data-profile-step="3" hidden>
+        <div class="eyebrow">Step 3 of 3</div>
+        <h2 tabindex="-1">Equipment, safety and saving</h2>
+        <p>Finish with the environment and safety filters that apply to you.</p>
+        <fieldset class="profile-subsection">
         <legend>Training environment</legend>
         <div class="option-grid">${Object.entries(EQUIPMENT_PRESETS)
           .map(
@@ -739,13 +765,13 @@ function renderOnboarding(edit = false) {
           )
           .join("")}</div>
       </fieldset>
-      <fieldset id="customEquipment" class="${profile.equipmentPreset === "custom" ? "" : "hidden"}">
+        <fieldset id="customEquipment" class="profile-subsection ${profile.equipmentPreset === "custom" ? "" : "hidden"}">
         <legend>Custom equipment</legend>
         <div class="option-grid">${COMMON_EQUIPMENT.map(
           (item) => `<label class="option"><input type="checkbox" name="equipment" value="${item}" ${(profile.equipment || []).includes(item) ? "checked" : ""}><span>${labelize(item)}</span></label>`,
         ).join("")}</div>
       </fieldset>
-      <fieldset>
+        <fieldset class="profile-subsection">
         <legend>Pain and movement constraints</legend>
         <p class="notice">These are conservative software filters, not medical clearance. Stop any exercise that increases symptoms.</p>
         <div class="option-grid">${Object.entries(CONSTRAINTS)
@@ -754,7 +780,7 @@ function renderOnboarding(edit = false) {
           )
           .join("")}</div>
       </fieldset>
-      <fieldset>
+        <fieldset class="profile-subsection">
         <legend>Where should your profile be saved?</legend>
         <div class="option-grid storage-options">
           <label class="option">
@@ -767,16 +793,46 @@ function renderOnboarding(edit = false) {
           </label>
         </div>
         <p class="notice">There is no account or cloud sync. Clearing this browser's site data removes the live copy. A backup file can be imported on another phone or computer.</p>
-      </fieldset>
-      <div class="actions">
-        <button class="btn primary" type="submit">${edit ? "Save and rebuild recommendation" : "Build my programme"}</button>
+        </fieldset>
+      </section>
+
+      <div class="actions profile-step-actions">
+        <button id="previousProfileStep" class="btn ghost" type="button" hidden>Back</button>
+        <button id="nextProfileStep" class="btn primary" type="button">Continue</button>
+        <button id="submitProfile" class="btn primary" type="submit" hidden>${edit ? "Save and rebuild recommendation" : "Build my programme"}</button>
         ${edit ? '<button id="cancelProfile" class="btn ghost" type="button">Cancel</button>' : ""}
       </div>
     </form>`;
 
+  let activeProfileStep = 1;
+
+  function showProfileStep(step, { focus = false } = {}) {
+    activeProfileStep = Math.min(3, Math.max(1, Number(step) || 1));
+    $$('[data-profile-step]').forEach((section) => {
+      section.hidden = Number(section.dataset.profileStep) !== activeProfileStep;
+    });
+    $$('[data-profile-step-button]').forEach((button) => {
+      const active = Number(button.dataset.profileStepButton) === activeProfileStep;
+      if (active) button.setAttribute("aria-current", "step");
+      else button.removeAttribute("aria-current");
+    });
+    $("#previousProfileStep").hidden = activeProfileStep === 1;
+    $("#nextProfileStep").hidden = activeProfileStep === 3;
+    $("#submitProfile").hidden = activeProfileStep !== 3;
+    if (focus) $(`[data-profile-step="${activeProfileStep}"] h2`)?.focus();
+  }
+
   function markStructureCustom() {
     selectedPreset = "custom";
     $("#splitPresetSelect").value = "custom";
+  }
+
+  function renderSplitSummary() {
+    $("#splitSummary").innerHTML = selectedWorkoutDays
+      .map(
+        (day, index) => `<div><strong>Day ${index + 1}: ${escapeHtml(day.name)}</strong><span>${escapeHtml(WORKOUT_TYPES[day.type]?.label || "Full Body")}${day.emphasis?.length ? ` · preset emphasis: ${day.emphasis.map(labelize).join(", ")}` : " · balanced emphasis"}</span></div>`,
+      )
+      .join("");
   }
 
   function renderWorkoutDayEditor() {
@@ -816,10 +872,13 @@ function renderOnboarding(edit = false) {
       )
       .join("");
 
+    renderSplitSummary();
+
     $$('[data-day-field="name"]').forEach((input) => {
       input.addEventListener("input", (event) => {
         selectedWorkoutDays[Number(event.target.dataset.dayIndex)].name = event.target.value;
         markStructureCustom();
+        renderSplitSummary();
       });
     });
 
@@ -852,6 +911,7 @@ function renderOnboarding(edit = false) {
         const strictToggle = $(`[data-strict-focus][data-day-index="${event.target.dataset.dayIndex}"]`);
         if (strictToggle) strictToggle.checked = true;
         markStructureCustom();
+        renderSplitSummary();
       });
     });
 
@@ -864,11 +924,19 @@ function renderOnboarding(edit = false) {
           renderWorkoutDayEditor();
         }
         markStructureCustom();
+        renderSplitSummary();
       });
     });
   }
 
   renderWorkoutDayEditor();
+  showProfileStep(1);
+
+  $$('[data-profile-step-button]').forEach((button) => {
+    button.onclick = () => showProfileStep(button.dataset.profileStepButton, { focus: true });
+  });
+  $("#previousProfileStep").onclick = () => showProfileStep(activeProfileStep - 1, { focus: true });
+  $("#nextProfileStep").onclick = () => showProfileStep(activeProfileStep + 1, { focus: true });
 
   const goalSelect = $("#goalSelect");
   goalSelect.addEventListener("change", () => {
