@@ -806,6 +806,7 @@ legend {
 .exercise-stage {
   max-width: 700px;
   margin: 0 auto;
+  padding-bottom: 78px;
 }
 
 .exercise-media {
@@ -902,10 +903,12 @@ img.media-unavailable {
 }
 
 .rest-timer {
-  position: sticky;
-  bottom: 84px;
-  z-index: 12;
+  position: fixed;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 32;
   display: flex;
+  width: min(676px, calc(100% - 24px));
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -914,6 +917,8 @@ img.media-unavailable {
   border: 1px solid rgba(142, 227, 178, 0.35);
   border-radius: 14px;
   background: #14251d;
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
 }
 
 .bottom-nav {

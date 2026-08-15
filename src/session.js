@@ -95,6 +95,16 @@ export function invalidCompletedSets(session) {
   return issues;
 }
 
+export function restTimerEnd(seconds, now = Date.now()) {
+  const duration = Math.max(0, Number(seconds) || 0);
+  return duration ? now + duration * 1000 : null;
+}
+
+export function restSecondsRemaining(endTimestamp, now = Date.now()) {
+  if (!endTimestamp) return 0;
+  return Math.max(0, Math.ceil((Number(endTimestamp) - now) / 1000));
+}
+
 const SET_LOG_FIELDS = new Set(["weight", "reps", "rir"]);
 
 export function updateSetLogValue(set, field, value) {
