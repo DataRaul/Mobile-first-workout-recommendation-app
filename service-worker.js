@@ -1,4 +1,4 @@
-const CACHE = "workout-recommender-v3.5-offline-status-20260815";
+const CACHE = "workout-recommender-v3.6-progress-20260815";
 
 const APP = [
   "./",
@@ -10,7 +10,9 @@ const APP = [
   "./src/dataset.js",
   "./src/enrichment-rules.js",
   "./src/programme.js",
+  "./src/progress.js",
   "./src/schedule.js",
+  "./src/session.js",
   "./src/app.js",
   "./data/exercise-enrichment.json",
   "./data/exercise-overrides.json",
