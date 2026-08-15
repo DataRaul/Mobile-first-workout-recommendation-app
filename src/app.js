@@ -1,6 +1,12 @@
 import { COMMON_EQUIPMENT, CONSTRAINTS, EQUIPMENT_PRESETS, GOALS, LEVELS } from "./config.js";
 import { loadExercises, mediaUrl, uniqueValues } from "./dataset.js";
-import { exportState, importState, loadState, resetState, saveState } from "./storage.js";
+import {
+  exportState,
+  loadState,
+  previewImportState,
+  resetState,
+  saveState,
+} from "./storage.js";
 import {
   acceptProgram,
   carriedForwardSets,
@@ -70,6 +76,18 @@ const COMPLEXITY_LABELS = {
   2: "Intermediate",
   3: "Advanced",
   4: "Expert",
+};
+const INSTRUCTION_LANGUAGES = {
+  en: "English",
+  es: "Spanish",
+  it: "Italian",
+  fr: "French",
+  tr: "Turkish",
+  ru: "Russian",
+  zh: "Chinese",
+  hi: "Hindi",
+  pl: "Polish",
+  ko: "Korean",
 };
 
 function persist() {
@@ -166,6 +184,20 @@ function currentDeviceLabel() {
 
 function backupMessage(backup) {
   return `Backup saved as ${backup.fileName} in ${backup.location}.`;
+}
+
+function backupStatusHtml(preferences) {
+  if (!preferences.lastBackupAt || !preferences.lastBackupFileName) {
+    return '<div class="notice"><strong>No portable backup yet</strong><p>Create a backup before changing devices, clearing browser data, or after building meaningful training history.</p></div>';
+  }
+  const backupDate = new Date(preferences.lastBackupAt);
+  const timestamp = backupDate.getTime();
+  if (!Number.isFinite(timestamp)) {
+    return '<div class="notice"><strong>Backup date unavailable</strong><p>Create a new portable backup so its location and date can be verified.</p></div>';
+  }
+  const ageDays = Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
+  const ageText = ageDays === 0 ? "today" : `${ageDays} day${ageDays === 1 ? "" : "s"} ago`;
+  return `<div class="notice ${ageDays < 30 ? "subtle" : ""}"><strong>${ageDays >= 30 ? "Backup reminder" : "Latest portable backup"}</strong><p>${escapeHtml(preferences.lastBackupFileName)} was created ${ageText} in ${escapeHtml(preferences.lastBackupLocation || "your download location")}. Create a fresh file after important programme or history changes.</p></div>`;
 }
 
 function weightUnit() {
@@ -2765,11 +2797,9 @@ function renderProfile() {
   const profile = state.profile;
   const preferences = state.preferences || {};
   const deviceLabel = currentDeviceLabel();
-  const lastBackup = preferences.lastBackupFileName
-    ? `<p><strong>Latest backup:</strong> ${escapeHtml(preferences.lastBackupFileName)} — ${escapeHtml(preferences.lastBackupLocation || "download location")}.</p>`
-    : "<p><strong>Latest backup:</strong> No backup file has been created yet.</p>";
   $("#profileView").innerHTML = `
     <div class="hero"><div class="eyebrow">Profile</div><h1>${escapeHtml(profile?.name || "Training profile")}</h1><p>Changing programme inputs rebuilds the recommendation. History is retained.</p></div>
+    <div class="profile-section-heading"><div class="eyebrow">Programme inputs</div><h2>What shapes recommendations</h2><p>Editing these values rebuilds the programme. It does not delete recorded history.</p></div>
     <div class="card">
       <div class="chips">
         <span class="chip">${activeGoal().label}</span>
@@ -2782,7 +2812,7 @@ function renderProfile() {
       </div>
       <div class="actions">
         ${!state.activeProgram && state.draftProgram ? '<button id="profileContinueDraft" class="btn primary">Continue recommendation</button>' : ""}
-        <button id="editProfile" class="btn ${!state.activeProgram && state.draftProgram ? "" : "primary"}">Edit profile</button>
+        <button id="editProfile" class="btn ${!state.activeProgram && state.draftProgram ? "" : "primary"}">Edit programme inputs</button>
       </div>
     </div>
     <div class="card">
@@ -2791,6 +2821,7 @@ function renderProfile() {
         .map((day, index) => `Day ${index + 1}: ${escapeHtml(day.name)}${day.emphasis?.length ? ` — focus ${day.emphasis.map(labelize).join(", ")}` : ""}`)
         .join("<br>")}</p>
     </div>
+    <div class="profile-section-heading"><div class="eyebrow">App & data settings</div><h2>Display, help and portability</h2><p>These preferences do not rebuild or advance the programme.</p></div>
     <div class="card">
       <div class="eyebrow">Guide & help</div>
       <h2>Understand your programme</h2>
@@ -2801,18 +2832,27 @@ function renderProfile() {
       </div>
     </div>
     <div class="card">
-      <h2>Workout logging</h2>
-      <label class="field" for="profileWeightUnit">Weight unit</label>
-      <select id="profileWeightUnit">
-        <option value="kg" ${weightUnit() === "kg" ? "selected" : ""}>Kilograms (kg)</option>
-        <option value="lb" ${weightUnit() === "lb" ? "selected" : ""}>Pounds (lb)</option>
-      </select>
-      <p>Changing the unit converts workout inputs and history displays without changing the underlying training record.</p>
+      <h2>Display and workout logging</h2>
+      <div class="grid two">
+        <label class="field" for="profileWeightUnit">Weight unit
+          <select id="profileWeightUnit">
+            <option value="kg" ${weightUnit() === "kg" ? "selected" : ""}>Kilograms (kg)</option>
+            <option value="lb" ${weightUnit() === "lb" ? "selected" : ""}>Pounds (lb)</option>
+          </select>
+          <small>Converts workout inputs and history displays without changing underlying records.</small>
+        </label>
+        <label class="field" for="profileInstructionLanguage">Exercise-instruction language
+          <select id="profileInstructionLanguage">
+            ${Object.entries(INSTRUCTION_LANGUAGES).map(([code, label]) => `<option value="${code}" ${preferences.language === code ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+          <small>The app interface remains English. Instructions use this language when the source provides it, otherwise English.</small>
+        </label>
+      </div>
     </div>
     <div class="card">
       <h2>Where your data is saved</h2>
       <p><strong>Live copy:</strong> This browser on ${deviceLabel}. It is not stored in an account or automatically synced to another device.</p>
-      ${lastBackup}
+      ${backupStatusHtml(preferences)}
       <p>Export the profile, routine, gym observations and history to create or update a portable backup.</p>
       <div class="actions">
         <button id="exportData" class="btn">Create backup file</button>
@@ -2847,6 +2887,14 @@ function renderProfile() {
     renderAll();
     toast(`Weight unit changed to ${weightUnit()}.`);
   };
+  $("#profileInstructionLanguage").onchange = (event) => {
+    state.preferences.language = INSTRUCTION_LANGUAGES[event.target.value]
+      ? event.target.value
+      : "en";
+    persist();
+    renderAll();
+    toast(`Exercise instructions set to ${INSTRUCTION_LANGUAGES[state.preferences.language]}.`);
+  };
   $("#exportData").onclick = async () => {
     try {
       const backup = await exportState(state, { chooseLocation: true });
@@ -2869,13 +2917,31 @@ function renderProfile() {
   };
   $("#importData").onchange = async (event) => {
     try {
-      state = await importState(event.target.files[0]);
+      const file = event.target.files[0];
+      if (!file) return;
+      const preview = await previewImportState(file);
+      const programmeState = preview.activeProgram
+        ? "an active programme"
+        : preview.draftProgram
+          ? "a saved draft recommendation"
+          : "no saved programme";
+      const accepted = confirm(
+        `Import backup for “${preview.profile?.name || "Unnamed profile"}”?\n\nIt contains ${preview.history.length} recorded workout${preview.history.length === 1 ? "" : "s"}, ${programmeState}, and ${preview.gym?.unavailableExerciseIds?.length || 0} unavailable gym item${preview.gym?.unavailableExerciseIds?.length === 1 ? "" : "s"}.\n\nThis will replace the live profile, programme, history and settings in this browser.`,
+      );
+      if (!accepted) {
+        event.target.value = "";
+        toast("Import cancelled. Live data was not changed.");
+        return;
+      }
+      state = preview;
+      saveState(state);
       reconcileStoredProgramMetrics();
       renderAll();
       routeInitial();
-      toast("Data imported.");
+      toast("Backup imported after preview confirmation.");
     } catch (error) {
       alert(error.message);
+      event.target.value = "";
     }
   };
   $("#resetData").onclick = () => {

@@ -7,7 +7,7 @@ globalThis.localStorage = {
   removeItem: key => values.delete(key),
 };
 
-const { exportState, importState, loadState } = await import("../src/storage.js");
+const { exportState, importState, loadState, previewImportState } = await import("../src/storage.js");
 
 values.set(
   "workout-recommender.state.v2",
@@ -19,12 +19,27 @@ assert.equal(existing.preferences.profileStorage, "browser");
 assert.equal(existing.preferences.lastBackupFileName, null);
 assert.equal(existing.previousProgram, null);
 
-const imported = await importState({
+const importFile = {
   text: async () => JSON.stringify({ schemaVersion: 2, profile: { name: "Imported user" } }),
-});
+};
+const savedBeforePreview = values.get("workout-recommender.state.v2");
+const previewed = await previewImportState(importFile);
+assert.equal(previewed.profile.name, "Imported user");
+assert.equal(values.get("workout-recommender.state.v2"), savedBeforePreview);
+const imported = await importState(importFile);
 assert.equal(imported.profile.name, "Imported user");
 assert.equal(imported.preferences.profileStorage, "browser");
 assert.equal(imported.previousProgram, null);
+
+const normalizedPreferences = await previewImportState({
+  text: async () => JSON.stringify({
+    schemaVersion: 2,
+    profile: { name: "Preferences" },
+    preferences: { language: "unsupported", weightUnit: "stone" },
+  }),
+});
+assert.equal(normalizedPreferences.preferences.language, "en");
+assert.equal(normalizedPreferences.preferences.weightUnit, "kg");
 
 values.set(
   "workout-recommender.state.v2",
