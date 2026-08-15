@@ -1275,6 +1275,51 @@ img.media-unavailable {
   margin-bottom: 0;
 }
 
+.programme-context,
+.readiness-options {
+  margin-top: 14px;
+}
+
+.readiness-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.readiness-options [aria-pressed="true"] {
+  border-color: var(--accent);
+  background: rgba(142, 227, 178, 0.14);
+  color: var(--accent);
+}
+
+.notice.subtle {
+  border-left-color: var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.performance-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.performance-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.performance-list span {
+  color: var(--muted);
+  text-align: right;
+}
+
 .exercise-line-actions {
   display: flex;
   flex-wrap: wrap;

@@ -16,6 +16,7 @@ export const DEFAULT_STATE = {
     lastBackupAt: null,
     lastBackupFileName: null,
     lastBackupLocation: null,
+    readinessCheck: null,
   },
 };
 
