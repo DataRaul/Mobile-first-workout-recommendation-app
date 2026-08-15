@@ -1,4 +1,4 @@
-import { COMMON_EQUIPMENT, CONSTRAINTS, EQUIPMENT_PRESETS, GOALS, LEVELS } from "./config.js";
+import { APP_VERSION, COMMON_EQUIPMENT, CONSTRAINTS, EQUIPMENT_PRESETS, GOALS, LEVELS } from "./config.js";
 import { loadExercises, mediaUrl, uniqueValues } from "./dataset.js";
 import {
   exportState,
@@ -2987,7 +2987,7 @@ function renderProfile() {
         .map((day, index) => `Day ${index + 1}: ${escapeHtml(day.name)}${day.emphasis?.length ? ` — focus ${day.emphasis.map(labelize).join(", ")}` : ""}`)
         .join("<br>")}</p>
     </div>
-    <div class="profile-section-heading"><div class="eyebrow">App & data settings</div><h2>Display, help and portability</h2><p>These preferences do not rebuild or advance the programme.</p></div>
+    <div class="profile-section-heading"><div class="eyebrow">App & data settings · Version ${APP_VERSION}</div><h2>Display, help and portability</h2><p>These preferences do not rebuild or advance the programme.</p></div>
     <div class="card">
       <div class="eyebrow">Guide & help</div>
       <h2>Understand your programme</h2>
