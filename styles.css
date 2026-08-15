@@ -233,6 +233,112 @@ p {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.grid.two > *,
+.profile-field-grid > * {
+  align-self: start;
+}
+
+.profile-step[hidden],
+.profile-step-actions > [hidden] {
+  display: none !important;
+}
+
+.profile-stepper {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-stepper button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.profile-stepper button span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-3);
+}
+
+.profile-stepper button[aria-current="step"] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.profile-stepper button[aria-current="step"] span {
+  background: var(--accent);
+  color: #07120c;
+}
+
+.profile-step {
+  min-height: 360px;
+}
+
+.profile-step h2 {
+  margin: 5px 0 8px;
+}
+
+.profile-subsection {
+  margin-top: 18px;
+}
+
+.split-summary {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.split-summary > div {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.split-summary strong,
+.split-summary span {
+  display: block;
+}
+
+.split-summary span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.day-customizer {
+  margin-top: 12px;
+}
+
+.day-customizer > summary {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-3);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.day-customizer[open] > summary {
+  margin-bottom: 12px;
+  border-color: var(--accent);
+}
+
 label.field {
   display: grid;
   gap: 7px;
