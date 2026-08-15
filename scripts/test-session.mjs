@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { sessionCompletion } from "../src/session.js";
+import { sessionCompletion, updateSetLogValue } from "../src/session.js";
 
 const session = (doneValues) => ({
   exercises: [
@@ -31,6 +31,18 @@ assert.deepEqual(sessionCompletion({ exercises: [] }), {
   completedSets: 0,
   totalSets: 0,
   status: "partial",
+});
+
+const loggedSet = { weight: "", reps: "", rir: "", done: false };
+assert.equal(updateSetLogValue(loggedSet, "weight", 10), loggedSet);
+updateSetLogValue(loggedSet, "reps", "12");
+updateSetLogValue(loggedSet, "rir", 2);
+updateSetLogValue(loggedSet, "unexpected", "ignored");
+assert.deepEqual(loggedSet, {
+  weight: "10",
+  reps: "12",
+  rir: "2",
+  done: false,
 });
 
 console.log("Session completion checks passed.");
