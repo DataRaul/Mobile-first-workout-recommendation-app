@@ -1629,6 +1629,21 @@ export function comparePrograms(previousProgram, nextProgram) {
   };
 }
 
+export function summarizeProgramChanges(previousProgram, nextProgram) {
+  const comparison = comparePrograms(previousProgram, nextProgram);
+  const { retained, replaced, added, removed, adjusted } = comparison.summary;
+  return {
+    fromProgramId: comparison.previousProgramId,
+    toProgramId: comparison.nextProgramId,
+    retained,
+    replaced,
+    added,
+    removed,
+    adjusted,
+    changedExerciseSlots: replaced + added + removed,
+  };
+}
+
 export function linkProgramContinuation(nextProgram, previousProgram) {
   if (!nextProgram || !previousProgram) return nextProgram;
   const comparison = comparePrograms(previousProgram, nextProgram);
