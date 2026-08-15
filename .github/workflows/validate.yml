@@ -11,10 +11,20 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm run validate
+      - name: Validate repository and self-contained regressions
+        run: npm run validate
+      - name: Verify enrichment reproducibility
+        run: npm run enrichment:check
+      - name: Run programme regression explicitly
+        run: node scripts/test-programme.mjs
+      - name: Run real 1,324-exercise recommendation matrix
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/data/exercises.json -o /tmp/exercises.json
+          printf '%s  %s\n' '656634224b8977b99a6d765470ee123260d4979715eaa4e7c0b7c8bb0d79f93d' '/tmp/exercises.json' | sha256sum -c -
+          npm run test:matrix -- --source /tmp/exercises.json
