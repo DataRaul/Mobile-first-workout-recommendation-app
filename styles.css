@@ -508,6 +508,7 @@ legend {
 }
 
 .btn.small {
+  min-height: 40px;
   padding: 8px 10px;
   font-size: 0.82rem;
 }
@@ -1776,6 +1777,34 @@ img.media-unavailable {
 }
 
 @media (max-width: 480px) {
+  .summary-row,
+  .exercise-title-row,
+  .performance-list li {
+    flex-direction: column;
+  }
+
+  .performance-list span {
+    text-align: left;
+  }
+
+  .planner-workout > summary,
+  .routine-workout > summary {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-actions .btn,
+  .actions .btn {
+    max-width: 100%;
+  }
+
+  .card,
+  .notice,
+  .exercise-line,
+  .planner-workout,
+  .routine-workout {
+    overflow-wrap: anywhere;
+  }
+
   .weekday-picker {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -1816,5 +1845,16 @@ img.media-unavailable {
 
   .history-set-edit > strong {
     grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
