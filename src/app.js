@@ -80,6 +80,20 @@ function toast(message) {
   }, 3000);
 }
 
+function actionToast(message, actionLabel, action) {
+  const element = $("#toast");
+  element.innerHTML = `<span>${escapeHtml(message)}</span><button id="toastAction" type="button">${escapeHtml(actionLabel)}</button>`;
+  element.hidden = false;
+  clearTimeout(element._timer);
+  $("#toastAction").onclick = () => {
+    clearTimeout(element._timer);
+    action();
+  };
+  element._timer = setTimeout(() => {
+    element.hidden = true;
+  }, 8000);
+}
+
 function updateDatasetBadge() {
   const badge = $("#datasetBadge");
   if (!exercises.length) {
@@ -1986,6 +2000,9 @@ function openReplacementPicker({
     : null;
   const profileDifficulty = maxComplexity(state.profile.level);
   let selectedDifficulty = "profile";
+  let searchQuery = "";
+  let selectedEquipment = "";
+  let showAllExact = false;
 
   const difficultyOptions = [
     { value: "profile", label: `Up to ${LEVELS[state.profile.level]} — profile maximum` },
@@ -1997,15 +2014,82 @@ function openReplacementPicker({
     ].slice(0, profileDifficulty),
   ];
 
+  const scopeText =
+    scope === "session"
+      ? permanent
+        ? markUnavailable
+          ? "Today + future routine · the current exercise will also be marked unavailable at this gym."
+          : "Today + future routine · this changes the current session and its routine template."
+        : "Today only · the routine template stays unchanged."
+      : scope === "routine"
+        ? "Future routine · completed history and any workout already in progress stay unchanged."
+        : "Draft only · this changes the recommendation before you accept it.";
+
+  function replacementTier(candidate) {
+    if (
+      candidate._replacement?.groupMatch === "exact" &&
+      candidate._replacement?.roleMatch === "exact"
+    ) {
+      return 0;
+    }
+    if (candidate._replacement?.groupMatch === "exact") return 1;
+    return 2;
+  }
+
+  function candidateHtml(candidate) {
+    const matchText =
+      candidate._replacement?.groupMatch === "exact"
+        ? candidate._replacement?.roleMatch === "exact"
+          ? "Exact muscle and movement-role match"
+          : "Exact muscle · related movement role"
+        : `Broader companion match for ${labelize(candidate._replacement?.requestedGroup)}`;
+    const instructions = instructionSteps(candidate);
+    return `
+      <article class="replacement-option" data-match-tier="${replacementTier(candidate)}">
+        <img loading="lazy" src="${mediaUrl(candidate.image)}" alt="">
+        <div>
+          <strong>${escapeHtml(candidate.name)}</strong>
+          <small>${labelize(candidate.app.group)} · ${labelize(candidate.equipment)}</small>
+          <small class="replacement-match">${escapeHtml(matchText)}</small>
+          <small class="complexity-meta">${escapeHtml(complexityText(candidate))} · ${labelize(candidate.app.movement)}</small>
+          <details class="replacement-preview">
+            <summary>Preview details</summary>
+            <p>Target: ${escapeHtml(candidate.target)} · ${escapeHtml(labelize(candidate.category))}</p>
+            ${instructions.length
+              ? `<ol class="instructions">${instructions.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>`
+              : "<p>Detailed instructions are unavailable for this exercise.</p>"}
+          </details>
+        </div>
+        <button type="button" class="btn small primary choose-replacement" data-id="${candidate.id}">Choose</button>
+      </article>`;
+  }
+
+  function restoreReplacementSnapshot(snapshot) {
+    state = JSON.parse(snapshot);
+    persist();
+    renderAll();
+    if (scope === "session") {
+      renderSession({ focusHeading: true });
+      view("sessionView");
+    } else if (scope === "routine") {
+      renderRoutine();
+      view("routineView");
+    } else {
+      renderPlanner();
+      view("plannerView");
+    }
+    toast("Substitution undone.");
+  }
+
   function renderReplacementResults() {
-    const options = replacementOptions(
+    const allOptions = replacementOptions(
       exercises,
       context.item.exerciseId,
       context.existingIds,
       state.profile,
       state,
       state.profile.goal,
-      30,
+      100,
       selectedDifficulty,
       context.targetGroup,
       context.targetRole,
@@ -2013,29 +2097,56 @@ function openReplacementPicker({
       context.requestedGroup,
     );
 
+    const equipmentValues = [...new Set(allOptions.map((candidate) => candidate.equipment))]
+      .sort((a, b) => a.localeCompare(b));
+    if (selectedEquipment && !equipmentValues.includes(selectedEquipment)) selectedEquipment = "";
+    $("#replacementEquipment").innerHTML = `<option value="">All eligible equipment</option>${equipmentValues
+      .map((value) => `<option value="${escapeHtml(value)}" ${selectedEquipment === value ? "selected" : ""}>${escapeHtml(labelize(value))}</option>`)
+      .join("")}`;
+
+    const options = allOptions
+      .filter((candidate) => {
+        const haystack = normalize(
+          `${candidate.name} ${candidate.target} ${candidate.category} ${candidate.equipment} ${candidate.app.group} ${candidate.app.movement}`,
+        );
+        return (
+          (!searchQuery || haystack.includes(searchQuery)) &&
+          (!selectedEquipment || candidate.equipment === selectedEquipment)
+        );
+      })
+      .map((candidate, index) => ({ candidate, index }))
+      .sort((a, b) => replacementTier(a.candidate) - replacementTier(b.candidate) || a.index - b.index)
+      .map(({ candidate }) => candidate);
+
     const optionsById = new Map(options.map((candidate) => [String(candidate.id), candidate]));
+    const exact = options.filter((candidate) => candidate._replacement?.groupMatch === "exact");
+    const broader = options.filter((candidate) => candidate._replacement?.groupMatch !== "exact");
+    const filtersActive = Boolean(searchQuery || selectedEquipment);
+    const shownExact = showAllExact || filtersActive ? exact : exact.slice(0, 5);
+    const shownBroader = filtersActive || exact.length === 0 ? broader.slice(0, 20) : broader;
 
     $("#replacementResults").innerHTML = options.length
-      ? options
-          .map(
-            (candidate) => `
-              <article class="replacement-option">
-                <img loading="lazy" src="${mediaUrl(candidate.image)}" alt="">
-                <div>
-                  <strong>${escapeHtml(candidate.name)}</strong>
-                  <small>${labelize(candidate.app.group)} · ${labelize(candidate.equipment)}</small>
-                  ${candidate._replacement?.groupMatch === "companion" ? `<small>Same-day companion for ${escapeHtml(labelize(candidate._replacement.requestedGroup))}</small>` : ""}
-                  <small class="complexity-meta">${escapeHtml(complexityText(candidate))} · ${labelize(candidate.app.movement)}</small>
-                </div>
-                <button class="btn small primary choose-replacement" data-id="${candidate.id}">Choose</button>
-              </article>`,
-          )
-          .join("")
-      : `<p>No eligible ${escapeHtml(labelize(replacementTarget))} replacements match this difficulty with the current equipment and safety filters.</p>`;
+      ? `<p class="replacement-count">${options.length} eligible option${options.length === 1 ? "" : "s"}</p>
+        ${shownExact.length
+          ? `<section class="replacement-section"><h3>${filtersActive ? "Exact matches" : "Best exact matches"}</h3><p>These preserve the intended muscle; exact movement-role matches appear first.</p>${shownExact.map(candidateHtml).join("")}</section>`
+          : ""}
+        ${!filtersActive && exact.length > shownExact.length
+          ? `<button id="showAllExact" type="button" class="btn ghost">Show all ${exact.length} exact matches</button>`
+          : ""}
+        ${shownBroader.length
+          ? `<details class="replacement-section broader-replacements" ${exact.length === 0 || filtersActive ? "open" : ""}><summary>Broader companion matches (${broader.length})</summary><p>Use these only when an exact-muscle option is unsuitable; they remain inside this workout's allowed muscle groups.</p>${shownBroader.map(candidateHtml).join("")}</details>`
+          : ""}`
+      : `<p>No eligible ${escapeHtml(labelize(replacementTarget))} replacements match the current search, difficulty, equipment and safety filters.</p>`;
+
+    $("#showAllExact")?.addEventListener("click", () => {
+      showAllExact = true;
+      renderReplacementResults();
+    });
 
     $$(".choose-replacement").forEach((button) => {
       button.onclick = () => {
         const candidate = optionsById.get(String(button.dataset.id));
+        const undoSnapshot = JSON.stringify(state);
         context.apply(button.dataset.id, {
           permanent,
           markUnavailable,
@@ -2044,13 +2155,15 @@ function openReplacementPicker({
           candidate,
         });
         $("#exerciseDialog").close();
+        let message = context.successMessage;
         if (markUnavailable) {
-          toast("Marked unavailable at this gym and replaced in the routine.");
+          message = "Marked unavailable at this gym and replaced in the routine.";
         } else if (scope === "session") {
-          toast(permanent ? "Routine updated with your selected substitute." : "Substituted for this session only.");
-        } else {
-          toast(context.successMessage);
+          message = permanent
+            ? "Routine updated with your selected substitute."
+            : "Substituted for this session only.";
         }
+        actionToast(message, "Undo", () => restoreReplacementSnapshot(undoSnapshot));
       };
     });
   }
@@ -2058,29 +2171,46 @@ function openReplacementPicker({
   $("#exerciseDialogContent").innerHTML = `
     <div class="eyebrow">Choose a substitute</div>
     <h2>Replace ${escapeHtml(currentExercise.name)}</h2>
-    <p>Options first stay inside the intended muscle slot. If that muscle has no eligible alternatives, the picker may use a sensible companion muscle already assigned to this workout—never an unrelated training day. Equipment, safety and profile-difficulty limits remain active.</p>
+    <p>Exact-muscle options appear first. Broader companion matches stay separate and never leave this workout's allowed muscle groups. Equipment, safety and profile-difficulty limits remain active.</p>
+    <div class="notice replacement-scope"><strong>Change scope</strong><p>${escapeHtml(scopeText)}</p></div>
     <div class="chips">
       <span class="chip">Target: ${escapeHtml(labelize(replacementTarget))}</span>
       ${replacementRole ? `<span class="chip">Role: ${escapeHtml(replacementRole)}</span>` : ""}
       <span class="chip">Current: ${escapeHtml(complexityText(currentExercise))}</span>
       <span class="chip">${escapeHtml(profileComplexityText())}</span>
     </div>
-    <label class="field" style="margin-top:14px">
-      Difficulty
-      <select id="replacementDifficulty">
+    <div class="replacement-filters">
+      <label class="field">Search
+        <input id="replacementSearch" type="search" placeholder="Exercise, muscle, movement or equipment">
+      </label>
+      <label class="field">Difficulty
+        <select id="replacementDifficulty">
         ${difficultyOptions
           .map(
             (option) =>
               `<option value="${option.value}" ${option.value === selectedDifficulty ? "selected" : ""}>${escapeHtml(option.label)}</option>`,
           )
           .join("")}
-      </select>
-    </label>
+        </select>
+      </label>
+      <label class="field">Equipment
+        <select id="replacementEquipment"><option value="">All eligible equipment</option></select>
+      </label>
+    </div>
     <div id="replacementResults" class="replacement-list"></div>`;
 
   $("#exerciseDialog").showModal();
   $("#replacementDifficulty").addEventListener("change", (event) => {
     selectedDifficulty = event.target.value;
+    showAllExact = false;
+    renderReplacementResults();
+  });
+  $("#replacementSearch").addEventListener("input", (event) => {
+    searchQuery = normalize(event.target.value);
+    renderReplacementResults();
+  });
+  $("#replacementEquipment").addEventListener("change", (event) => {
+    selectedEquipment = event.target.value;
     renderReplacementResults();
   });
   renderReplacementResults();
@@ -2423,7 +2553,12 @@ function renderProfile() {
     <div class="card">
       <h2>Gym learning</h2>
       <p>${state.gym.unavailableExerciseIds.length} exercise or machine variants are currently marked unavailable at this gym.</p>
-      <button id="resetGym" class="btn ghost">Clear unavailable list</button>
+      ${state.gym.unavailableExerciseIds.length
+        ? `<div class="unavailable-list">${state.gym.unavailableExerciseIds
+            .map((id) => `<div><span>${escapeHtml(exerciseById(id)?.name || id)}</span><button type="button" class="btn ghost small" data-restore-availability="${escapeHtml(id)}">Make available</button></div>`)
+            .join("")}</div>`
+        : ""}
+      <button id="resetGym" class="btn ghost" ${state.gym.unavailableExerciseIds.length ? "" : "disabled"}>Clear all unavailable items</button>
     </div>`;
 
   $("#profileContinueDraft")?.addEventListener("click", () => {
@@ -2485,6 +2620,17 @@ function renderProfile() {
     persist();
     renderProfile();
   };
+  $$('[data-restore-availability]').forEach((button) => {
+    button.onclick = () => {
+      const id = button.dataset.restoreAvailability;
+      state.gym.unavailableExerciseIds = state.gym.unavailableExerciseIds.filter(
+        (exerciseId) => String(exerciseId) !== String(id),
+      );
+      persist();
+      renderProfile();
+      toast("Exercise is available for future recommendations and substitutions.");
+    };
+  });
 }
 
 function renderAll() {
