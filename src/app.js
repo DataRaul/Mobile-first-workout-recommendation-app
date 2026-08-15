@@ -21,6 +21,13 @@ import {
   WORKOUT_TYPES,
 } from "./programme.js";
 import { sessionCompletion, updateSetLogValue } from "./session.js";
+import {
+  defaultTrainingWeekdays,
+  normalizeTrainingWeekdays,
+  scheduleStatus,
+  WEEKDAYS,
+  weekdaySummary,
+} from "./schedule.js";
 
 let state = loadState();
 let exercises = [];
@@ -682,6 +689,10 @@ function renderOnboarding(edit = false) {
     ...profile,
     daysPerWeek: selectedDaysPerWeek,
   });
+  let selectedTrainingWeekdays = normalizeTrainingWeekdays(
+    profile.trainingWeekdays,
+    selectedDaysPerWeek,
+  );
 
   const presetOptions = () => {
     const presets = getSplitPresets(selectedDaysPerWeek);
@@ -741,6 +752,12 @@ function renderOnboarding(edit = false) {
           .map((number) => `<option value="${number}" ${profile.durationWeeks == number ? "selected" : ""}>${number} weeks</option>`)
           .join("")}</select></label>
         </div>
+        <fieldset class="profile-subsection">
+          <legend>Preferred weekdays</legend>
+          <p>Select ${selectedDaysPerWeek} days. This guides your calendar; missed days never skip the next workout.</p>
+          <div id="weekdayPicker" class="weekday-picker"></div>
+          <small id="weekdayScheduleNote">Training weeks advance after completed sessions, not automatically on Monday.</small>
+        </fieldset>
         <fieldset class="profile-subsection">
           <legend>Weekly workout structure</legend>
           <label class="field">Starting split<select id="splitPresetSelect" name="splitPreset">${presetOptions()}</select></label>
@@ -833,6 +850,30 @@ function renderOnboarding(edit = false) {
         (day, index) => `<div><strong>Day ${index + 1}: ${escapeHtml(day.name)}</strong><span>${escapeHtml(WORKOUT_TYPES[day.type]?.label || "Full Body")}${day.emphasis?.length ? ` · preset emphasis: ${day.emphasis.map(labelize).join(", ")}` : " · balanced emphasis"}</span></div>`,
       )
       .join("");
+  }
+
+  function renderWeekdayPicker() {
+    const selected = new Set(selectedTrainingWeekdays);
+    $("#weekdayPicker").innerHTML = WEEKDAYS.map(
+      (day) => `<label class="option"><input type="checkbox" name="trainingWeekdays" value="${day.value}" ${selected.has(day.value) ? "checked" : ""}><span>${day.short}</span></label>`,
+    ).join("");
+    $("#weekdayScheduleNote").textContent = `${weekdaySummary(selectedTrainingWeekdays)} selected. Training weeks advance after ${selectedDaysPerWeek} completed sessions, not automatically on Monday.`;
+
+    $$('#weekdayPicker input[name="trainingWeekdays"]').forEach((checkbox) => {
+      checkbox.onchange = (event) => {
+        const value = Number(event.target.value);
+        const current = new Set(selectedTrainingWeekdays);
+        if (event.target.checked && current.size >= selectedDaysPerWeek) {
+          event.target.checked = false;
+          alert(`Choose exactly ${selectedDaysPerWeek} preferred weekdays.`);
+          return;
+        }
+        if (event.target.checked) current.add(value);
+        else current.delete(value);
+        selectedTrainingWeekdays = [...current];
+        $("#weekdayScheduleNote").textContent = `${weekdaySummary(selectedTrainingWeekdays) || "No days"} selected (${selectedTrainingWeekdays.length}/${selectedDaysPerWeek}). Training weeks advance only after completed sessions.`;
+      };
+    });
   }
 
   function renderWorkoutDayEditor() {
@@ -930,6 +971,7 @@ function renderOnboarding(edit = false) {
   }
 
   renderWorkoutDayEditor();
+  renderWeekdayPicker();
   showProfileStep(1);
 
   $$('[data-profile-step-button]').forEach((button) => {
@@ -950,8 +992,10 @@ function renderOnboarding(edit = false) {
     const firstPreset = getSplitPresets(selectedDaysPerWeek)[0];
     selectedPreset = firstPreset.id;
     selectedWorkoutDays = defaultWorkoutDays(selectedDaysPerWeek, selectedPreset);
+    selectedTrainingWeekdays = defaultTrainingWeekdays(selectedDaysPerWeek);
     $("#splitPresetSelect").innerHTML = presetOptions();
     renderWorkoutDayEditor();
+    renderWeekdayPicker();
   });
 
   $("#splitPresetSelect").addEventListener("change", (event) => {
@@ -985,6 +1029,11 @@ function renderOnboarding(edit = false) {
       alert(`Workout “${invalidStrictDay.name}” needs at least one selected muscle group.`);
       return;
     }
+    if (selectedTrainingWeekdays.length !== selectedDaysPerWeek) {
+      alert(`Choose exactly ${selectedDaysPerWeek} preferred weekdays.`);
+      showProfileStep(2, { focus: true });
+      return;
+    }
 
     state.profile = {
       ...profile,
@@ -1000,6 +1049,7 @@ function renderOnboarding(edit = false) {
       favorites: profile.favorites || [],
       splitPreset: selectedPreset,
       workoutDays,
+      trainingWeekdays: selectedTrainingWeekdays,
     };
     const selectedStorage = String(form.get("profileStorage") || "browser");
     state.preferences = {
@@ -1254,6 +1304,11 @@ function renderToday() {
   const totalSessions = program.durationWeeks * program.daysPerWeek;
   const completedSessions = program.completedSessions || 0;
   const percent = Math.min(100, (completedSessions / totalSessions) * 100);
+  const trainingWeekdays = normalizeTrainingWeekdays(
+    state.profile.trainingWeekdays,
+    program.daysPerWeek,
+  );
+  const todaySchedule = scheduleStatus(trainingWeekdays);
 
   $("#todayView").innerHTML = `
     <div class="hero">
@@ -1264,9 +1319,10 @@ function renderToday() {
     <article class="card today-card">
       <div class="summary-row">
         <div>
-          <div class="eyebrow">Week ${week} of ${program.durationWeeks}</div>
+          <div class="eyebrow">Training week ${week} of ${program.durationWeeks} · ${escapeHtml(todaySchedule.label)}</div>
           <h2>${escapeHtml(state.activeSession?.workoutName || workout.name)}</h2>
           <p>${workout.exercises.length} exercises · approximately ${program.sessionMinutes} minutes</p>
+          <small>Preferred days: ${weekdaySummary(trainingWeekdays)}. Missed calendar days do not skip this workout.</small>
           ${workoutMuscleChipsHtml(workout)}
         </div>
         <div class="metric"><strong>${completedSessions}/${totalSessions}</strong><span>sessions</span></div>
