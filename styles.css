@@ -1292,6 +1292,98 @@ img.media-unavailable {
   display: block;
 }
 
+.adherence-card {
+  margin-top: 14px;
+}
+
+.record-list,
+.history-list,
+.history-correction-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.record-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+}
+
+.record-row small,
+.record-row span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.record-row > div:last-child {
+  text-align: right;
+}
+
+.history-session {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.history-session > summary {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.history-session > summary .number {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--surface-3);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.history-session > summary strong,
+.history-session > summary small {
+  display: block;
+}
+
+.history-session > summary small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.history-session > .performance-list,
+.history-session > .actions {
+  margin: 0 12px 12px;
+}
+
+.history-correction-form fieldset {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.history-set-edit {
+  display: grid;
+  grid-template-columns: 48px repeat(3, 1fr);
+  align-items: end;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.history-set-edit label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .stat strong {
   font-size: 1.45rem;
 }
@@ -1644,5 +1736,21 @@ img.media-unavailable {
   .set-check {
     width: 38px;
     height: 38px;
+  }
+
+  .record-row {
+    grid-template-columns: 1fr;
+  }
+
+  .record-row > div:last-child {
+    text-align: left;
+  }
+
+  .history-set-edit {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .history-set-edit > strong {
+    grid-column: 1 / -1;
   }
 }
