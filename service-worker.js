@@ -1,5 +1,47 @@
 const CACHE = "workout-recommender-v3.8.0-exercise-customization-20260816";
-const APP = ["./","./index.html","./styles.css","./accessibility.css","./customization.css","./manifest.webmanifest","./src/config.js","./src/storage.js","./src/dataset.js","./src/enrichment-rules.js","./src/programme.js","./src/progress.js","./src/schedule.js","./src/session.js","./src/app.js","./src/accessibility.js","./src/customization.js","./src/customization-ui.js","./src/customization-copy.js","./data/exercise-enrichment.json","./data/exercise-overrides.json","./data/programming-targets.json","./data/enrichment-metadata.json"];
-self.addEventListener("install",(event)=>{event.waitUntil(caches.open(CACHE).then((cache)=>cache.addAll(APP)).then(()=>self.skipWaiting()));});
-self.addEventListener("activate",(event)=>{event.waitUntil(caches.keys().then((keys)=>Promise.all(keys.filter((key)=>key!==CACHE).map((key)=>caches.delete(key)))).then(()=>self.clients.claim()));});
-self.addEventListener("fetch",(event)=>{if(event.request.method!=="GET")return;const url=new URL(event.request.url);if(url.hostname==="raw.githubusercontent.com"){event.respondWith(caches.open(CACHE).then(async(cache)=>{const cached=await cache.match(event.request);const network=fetch(event.request).then((response)=>{if(response.ok)cache.put(event.request,response.clone());return response;}).catch(()=>cached);return cached||network;}));return;}event.respondWith(caches.open(CACHE).then(async(cache)=>{try{const response=await fetch(event.request);if(response.ok)await cache.put(event.request,response.clone());return response;}catch{const cached=await cache.match(event.request);if(cached)return cached;if(event.request.mode==="navigate")return caches.match("./index.html");return new Response("Offline resource unavailable",{status:503,headers:{"Content-Type":"text/plain"}});}}));});
+
+const APP = [
+  "./", "./index.html", "./styles.css", "./accessibility.css", "./customization.css", "./manifest.webmanifest",
+  "./src/config.js", "./src/storage.js", "./src/dataset.js", "./src/enrichment-rules.js", "./src/programme.js",
+  "./src/progress.js", "./src/schedule.js", "./src/session.js", "./src/app.js", "./src/accessibility.js",
+  "./src/customization.js", "./src/customization-ui.js", "./src/customization-copy.js",
+  "./data/exercise-enrichment.json", "./data/exercise-overrides.json", "./data/programming-targets.json", "./data/enrichment-metadata.json",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
+});
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (url.hostname === "raw.githubusercontent.com") {
+    event.respondWith(caches.open(CACHE).then(async (cache) => {
+      const cached = await cache.match(event.request);
+      const network = fetch(event.request)
+        .then((response) => {
+          if (response.ok) cache.put(event.request, response.clone());
+          return response;
+        })
+        .catch(() => cached);
+      return cached || network;
+    }));
+    return;
+  }
+  event.respondWith(caches.open(CACHE).then(async (cache) => {
+    try {
+      const response = await fetch(event.request);
+      if (response.ok) await cache.put(event.request, response.clone());
+      return response;
+    } catch {
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      if (event.request.mode === "navigate") return caches.match("./index.html");
+      return new Response("Offline resource unavailable", { status: 503, headers: { "Content-Type": "text/plain" } });
+    }
+  }));
+});
