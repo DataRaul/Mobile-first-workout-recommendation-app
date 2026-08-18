@@ -57,6 +57,14 @@ const HIGH_SKILL_PATTERNS = [
   "turkish get up",
 ];
 
+const UNSTABLE_SETUP_PATTERNS = [
+  "exercise ball",
+  "stability ball",
+  "bosu",
+  "balance board",
+  "wobble board",
+];
+
 const STABLE_EQUIPMENT = new Set([
   "leverage machine",
   "sled machine",
@@ -93,11 +101,23 @@ export function exerciseRecommendationPrior(exercise, profile = {}) {
   const complexity = Number(app.complexity) || 1;
   const commonDefault = hasPattern(name, COMMON_DEFAULT_PATTERNS);
   const highSkill = hasPattern(name, HIGH_SKILL_PATTERNS) || complexity >= 4;
+  const unstableSetup =
+    hasPattern(name, UNSTABLE_SETUP_PATTERNS) ||
+    mechanics.stability === "high";
   const stableSetup =
-    STABLE_EQUIPMENT.has(equipment) ||
-    mechanics.supported === true ||
-    mechanics.stability === "low";
+    !unstableSetup && (
+      STABLE_EQUIPMENT.has(equipment) ||
+      mechanics.supported === true ||
+      mechanics.stability === "low"
+    );
   const loadable = mechanics.loadability === "high" || mechanics.loadability === "moderate";
+  const starterBridge =
+    stage === "orientation" &&
+    complexity === 2 &&
+    !highSkill &&
+    !unstableSetup &&
+    !app.programming?.defaultAvoid &&
+    (commonDefault || stableSetup);
 
   let score = 0;
   const reasons = [];
@@ -114,6 +134,10 @@ export function exerciseRecommendationPrior(exercise, profile = {}) {
     score += 1;
     reasons.push("progressively_loadable");
   }
+  if (unstableSetup) {
+    score -= stage === "orientation" ? 6 : 2;
+    reasons.push("unstable_setup_not_default");
+  }
   if (app.programming?.defaultAvoid) {
     score -= 8;
     reasons.push("default_avoid");
@@ -121,7 +145,7 @@ export function exerciseRecommendationPrior(exercise, profile = {}) {
 
   if (stage === "orientation") {
     if (complexity <= 1) score += 2;
-    if (complexity === 2 && (commonDefault || stableSetup)) {
+    if (starterBridge) {
       score += 0.5;
       reasons.push("starter_bridge_candidate");
     }
@@ -140,6 +164,10 @@ export function exerciseRecommendationPrior(exercise, profile = {}) {
       score += 1;
       reasons.push("simple_exercise_remains_valid");
     }
+    if (highSkill && !commonDefault) {
+      score -= 3;
+      reasons.push("high_skill_not_default_progression");
+    }
   }
 
   return {
@@ -148,9 +176,10 @@ export function exerciseRecommendationPrior(exercise, profile = {}) {
     stageLabel: STAGE_LABELS[stage],
     commonDefault,
     stableSetup,
+    unstableSetup,
     loadable,
     highSkill,
-    starterBridge: stage === "orientation" && complexity === 2 && !highSkill && (commonDefault || stableSetup),
+    starterBridge,
     reasons,
   };
 }
