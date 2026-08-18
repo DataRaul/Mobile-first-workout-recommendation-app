@@ -1,4 +1,11 @@
 import { EQUIPMENT_PRESETS, GOALS } from "./config.js";
+import {
+  allowsStageComplexity,
+  exerciseRecommendationPrior,
+  splitStagePrior,
+  trainingStage,
+  trainingStageLabel,
+} from "./recommendation-priors.js";
 
 export const WORKOUT_TYPES = {
   full_body: {
@@ -386,7 +393,14 @@ export function workoutDaysForProfile(profile) {
   const saved = Array.isArray(profile.workoutDays) ? profile.workoutDays : [];
 
   if (saved.length !== expectedDays) {
-    return defaultWorkoutDays(expectedDays, profile.splitPreset);
+    const presets = getSplitPresets(expectedDays);
+    const explicitPreset = profile.splitPreset && profile.splitPreset !== "custom"
+      ? profile.splitPreset
+      : null;
+    const stagePreferred = splitStagePrior(expectedDays, profile).preferredPresetIds.find((id) =>
+      presets.some((preset) => preset.id === id),
+    );
+    return defaultWorkoutDays(expectedDays, explicitPreset || stagePreferred || null);
   }
 
   return saved.map((day, index) => {
@@ -561,7 +575,7 @@ export function eligibleForProfile(
   const allowed = allowedEquipment(profile);
   if (!allowed.has(exercise.equipment)) return false;
   if ((state.gym?.unavailableExerciseIds || []).includes(exercise.id)) return false;
-  if (exercise.app.complexity > complexityCeiling) return false;
+  if (!allowsStageComplexity(exercise, profile, complexityCeiling)) return false;
   if (
     (profile.constraints || []).some((constraint) =>
       HARD_COMPATIBILITY_STATUSES.has(compatibilityStatus(exercise, constraint)),
@@ -706,8 +720,9 @@ function generationComplexityOrder(profile) {
     order.push(complexity);
   }
 
-  // Never move a Starter profile upward automatically. Intermediate and
-  // Advanced profiles may use only one level above when coverage is otherwise missing.
+  // Never move a Starter profile upward automatically except through the
+  // explicit bounded stage-aware bridge in eligibleForProfile(). Intermediate
+  // and Advanced historical ordering remains descriptive only here.
   if (target > 1 && target < 4) order.push(target + 1);
 
   return [...new Set(order)];
@@ -1080,14 +1095,17 @@ function chooseExerciseForGroup(
     .map(({ exercise, tier }) => {
       const roleScore = tier === 0 ? 18 : tier === 1 ? 8 : 0;
       const complexityDistance = Math.abs(exercise.app.complexity - targetComplexity);
+      const recommendationPrior = exerciseRecommendationPrior(exercise, profile);
       return {
         exercise,
         tier,
+        recommendationPrior,
         score:
           roleScore +
           roleSpecificFitScore(exercise, targetRole) +
           goalScore(exercise, profile.goal) +
           programmingFitScore(exercise, profile) +
+          recommendationPrior.score +
           volumeSelectionScore(
             exercise,
             baseSets,
@@ -1121,6 +1139,10 @@ function chooseExerciseForGroup(
     targetRole: resolvedRole,
     roleMatch: best.tier === 0 ? "exact" : best.tier === 1 ? "related" : resolvedRole ? "alternative" : "group",
     difficultyDelta: best.exercise.app.complexity - targetComplexity,
+    recommendationPriorScore: best.recommendationPrior.score,
+    recommendationReasons: best.recommendationPrior.reasons,
+    recommendationStage: best.recommendationPrior.stage,
+    recommendationStageLabel: best.recommendationPrior.stageLabel,
   };
 }
 
@@ -1173,7 +1195,11 @@ function chooseExercise(
 function selectionQuality(selection) {
   const groupPenalty = selection.groupMatch === "exact" ? 0 : 10;
   const rolePenalty = selection.roleMatch === "exact" ? 0 : selection.roleMatch === "related" ? 2 : 4;
-  return groupPenalty + rolePenalty + Math.abs(selection.difficultyDelta || 0);
+  const priorCredit = Math.max(
+    -6,
+    Math.min(6, Number(selection.recommendationPriorScore) || 0),
+  ) * 0.25;
+  return groupPenalty + rolePenalty + Math.abs(selection.difficultyDelta || 0) - priorCredit;
 }
 
 function prescription(profile, selection, index, slot) {
@@ -1217,6 +1243,10 @@ function prescription(profile, selection, index, slot) {
     groupMatch: selection.groupMatch || "exact",
     roleMatch: selection.roleMatch,
     difficultyDelta: selection.difficultyDelta,
+    recommendationPriorScore: selection.recommendationPriorScore || 0,
+    recommendationReasons: selection.recommendationReasons || [],
+    recommendationStage: selection.recommendationStage || trainingStage(profile),
+    recommendationStageLabel: selection.recommendationStageLabel || trainingStageLabel(profile),
     constraintNotes: activeConstraintNotes(exercise, profile),
     setCredits: exercise.app.setCredits || { [exercise.app.group]: 1 },
     qualityConfidence: exercise.app.quality?.confidence || "unknown",
@@ -1252,6 +1282,7 @@ export function generateProgram(exercises, profile, state, variation = 0) {
     );
   }
 
+  const splitPrior = splitStagePrior(profile.daysPerWeek, profile);
   const requestedWorkoutDays = workoutDaysForProfile(profile);
   const mobilityPresetAdapted =
     profile.goal === "mobility" && profile.splitPreset !== "custom";
@@ -1340,7 +1371,7 @@ export function generateProgram(exercises, profile, state, variation = 0) {
         );
         if (alternative && selectionQuality(alternative) <= selectionQuality(selection)) {
           // Prefer weekly variety only when it does not downgrade the requested
-          // muscle, role, or difficulty fit. Exact programme coverage outranks novelty.
+          // muscle, role, or recommendation fit. Exact programme coverage outranks novelty.
           selection = alternative;
         }
       }
@@ -1407,6 +1438,10 @@ export function generateProgram(exercises, profile, state, variation = 0) {
     durationWeeks,
     daysPerWeek: Number(profile.daysPerWeek),
     sessionMinutes: Number(profile.sessionMinutes),
+    trainingStage: trainingStage(profile),
+    trainingStageLabel: trainingStageLabel(profile),
+    recommendedSplitIds: splitPrior.preferredPresetIds,
+    splitRecommendationNote: splitPrior.note,
     splitName: mobilityPresetAdapted
       ? "Full-body mobility rotation"
       : splitLabel(profile, workoutDays),
@@ -1420,7 +1455,7 @@ export function generateProgram(exercises, profile, state, variation = 0) {
     coverageMethod: "Exercise slots are balanced across the full week. Complete-body plans target two to three direct exercise slots per planned muscle when the selected days and session length provide enough capacity.",
     volumeMethod: "Primary sets count 1.0; strong secondary work counts 0.5; stabilising work counts 0.25.",
     enrichmentVersion: "3.1.0",
-    plannerVersion: "3.3.0",
+    plannerVersion: "3.4.0",
     reviewWeeks: [4, 8, durationWeeks].filter(
       (value, index, values) => value <= durationWeeks && values.indexOf(value) === index,
     ),
@@ -1842,7 +1877,10 @@ export function replacementOptions(
       ) {
         return false;
       }
-      if (difficulty === "profile" && exercise.app.complexity > profileDifficulty) {
+      if (
+        difficulty === "profile" &&
+        !allowsStageComplexity(exercise, profile, profileDifficulty)
+      ) {
         return false;
       }
       if (
@@ -1869,6 +1907,7 @@ export function replacementOptions(
       const complexityDistance = Math.abs(
         exercise.app.complexity - current.app.complexity,
       );
+      const recommendationPrior = exerciseRecommendationPrior(exercise, profile);
       return {
         exercise: {
           ...exercise,
@@ -1878,6 +1917,10 @@ export function replacementOptions(
             targetRole: resolvedRole,
             groupMatch: matchedGroup === originalRequestedGroup ? "exact" : "companion",
             roleMatch: targetRoleTier === 0 ? "exact" : targetRoleTier === 1 ? "related" : "group",
+            recommendationPriorScore: recommendationPrior.score,
+            recommendationReasons: recommendationPrior.reasons,
+            recommendationStage: recommendationPrior.stage,
+            recommendationStageLabel: recommendationPrior.stageLabel,
           },
         },
         score:
@@ -1886,7 +1929,9 @@ export function replacementOptions(
           (sameGroup ? 7 : 0) +
           (sameMovement ? 3 : 0) +
           (sameEquipment ? 1.5 : 0) +
-          goalScore(exercise, goal) -
+          goalScore(exercise, goal) +
+          programmingFitScore(exercise, profile) +
+          recommendationPrior.score -
           cautionPenalty(exercise, profile) +
           (exercise.app.quality?.confidence === "high" ? 1.5 : 0) -
           complexityDistance * 0.75,
