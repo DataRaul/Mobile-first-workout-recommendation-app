@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   adjustRestTimer,
+  cancelRestTimer,
   createRestTimer,
   pauseRestTimer,
   reconcileRestTimer,
@@ -9,7 +10,10 @@ import {
   restTimerRemaining,
   resumeRestTimer,
 } from "../src/session.js";
-import { loadState, saveState } from "../src/storage.js";
+import { DEFAULT_STATE, loadState, saveState } from "../src/storage.js";
+
+assert.equal(DEFAULT_STATE.preferences.useRestTimer, true, "existing users retain automatic timer behavior by default");
+assert.equal(DEFAULT_STATE.preferences.defaultRestSeconds, null, "programme rest remains the default until overridden");
 
 const custom = createRestTimer(40, { now: 0, recommendedRestSeconds: 90 });
 assert.equal(custom.durationSeconds, 40);
@@ -33,6 +37,10 @@ assert.equal(restTimerRemaining(resumed, 80_000), 60);
 assert.equal(restTimerRemaining(adjustRestTimer(resumed, 15, 80_000), 80_000), 75);
 assert.equal(resetRestTimer(custom, 60, 10_000).endsAt, 70_000);
 assert.equal(custom.recommendedRestSeconds, 90, "execution override must not rewrite programme metadata");
+const cancelled = cancelRestTimer(custom, 25_000);
+assert.equal(cancelled.status, "cancelled");
+assert.equal(cancelled.endsAt, null);
+assert.equal(restTimerRemaining(cancelled, 30_000), 0);
 
 const store = new Map();
 global.localStorage = {
@@ -68,6 +76,7 @@ const app = fs.readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
 const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 const worker = fs.readFileSync(new URL("../service-worker.js", import.meta.url), "utf8");
 assert.match(app, /if \(set\.done && restTimerEnabled\(\)\) startRest\(item\.restSeconds\);/);
+assert.match(app, /if \(!state\.activeSession \|\| !restTimerEnabled\(\)\) return;/);
 assert.ok(app.indexOf('class="card active-set-card"') < app.indexOf('class="card exercise-info-card"'), "active set controls must precede secondary content");
 assert.match(app, /visibilitychange/);
 assert.match(app, /pageshow/);
@@ -75,4 +84,4 @@ assert.match(app, /navigator\.wakeLock\?\.request/);
 assert.match(app, /nextSet\.weight = set\.weight/);
 assert.match(styles, /\.set-row\.current/);
 assert.match(worker, /workout-recommender-v3\.9\.0-timer-ux-20260818/);
-console.log("Rest timer, suspension recovery, persistence and active-set regressions passed.");
+console.log("Rest timer, optional behavior, suspension recovery, persistence and active-set regressions passed.");
