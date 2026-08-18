@@ -30,6 +30,21 @@ const benchPress = exercise("Barbell bench press", "barbell", 2, {
   stability: "moderate",
   loadability: "high",
 });
+const machineShoulderPress = exercise("Lever shoulder press", "leverage machine", 2, {
+  stability: "low",
+  loadability: "high",
+  supported: true,
+});
+const arnoldPress = exercise("Dumbbell Arnold press", "dumbbell", 2, {
+  stability: "low",
+  loadability: "high",
+  supported: true,
+});
+const reversePlankLegLift = exercise("Reverse plank with leg lift", "body weight", 2, {
+  stability: "low",
+  loadability: "moderate",
+  supported: true,
+});
 const unstableIncline = exercise("Dumbbell incline press on exercise ball", "dumbbell", 2, {
   stability: "high",
   loadability: "moderate",
@@ -57,7 +72,22 @@ assert.ok(
 assert.equal(
   allowsStageComplexity(benchPress, starter, 1),
   true,
-  "a common, progressively loadable complexity-2 exercise can bridge a starter ceiling",
+  "a canonical, progressively loadable complexity-2 exercise can bridge a Starter ceiling",
+);
+assert.equal(
+  allowsStageComplexity(machineShoulderPress, starter, 1),
+  true,
+  "a canonical supported shoulder press may bridge when its intrinsic difficulty is 2",
+);
+assert.equal(
+  allowsStageComplexity(arnoldPress, starter, 1),
+  false,
+  "stable setup alone must not make a complexity-2 variant a Starter bridge",
+);
+assert.equal(
+  allowsStageComplexity(reversePlankLegLift, starter, 1),
+  false,
+  "a broad common-name fragment must not make a more elaborate variant a Starter bridge",
 );
 assert.equal(
   allowsStageComplexity(unstableIncline, starter, 1),
