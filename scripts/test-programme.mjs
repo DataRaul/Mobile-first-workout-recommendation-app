@@ -7,6 +7,7 @@ import {
   movementRoleFit,
   replacementOptions,
 } from "../src/programme.js";
+import { allowsStageComplexity } from "../src/recommendation-priors.js";
 
 const equipment = ["body weight", "dumbbell", "barbell", "cable", "leverage machine", "smith machine"];
 const groups = [
@@ -79,9 +80,10 @@ for (const goal of ["strength", "hypertrophy", "power", "endurance", "general", 
   if (program.workouts.length !== 4) throw new Error(`${goal}: expected four workouts`);
   if (program.workouts.some(workout => workout.exercises.length < 5)) throw new Error(`${goal}: too few exercises`);
 }
-const starterProgram = generateProgram(exercises, { ...base, level: "starter", goal: "general" }, state, 0);
+const starterProfile = { ...base, level: "starter", goal: "general" };
+const starterProgram = generateProgram(exercises, starterProfile, state, 0);
 if (starterProgram.workouts.some(workout => workout.exercises.length < 5)) {
-  throw new Error("starter: too few exercises after the difficulty cap");
+  throw new Error("starter: too few exercises after the stage-aware difficulty gate");
 }
 
 const completeBodyDays = (count) => Array.from({ length: count }, (_, index) => ({
@@ -164,7 +166,7 @@ const starterReplacements = replacementOptions(
   exercises,
   starterItem.exerciseId,
   starterProgram.workouts[0].exercises.map((item) => item.exerciseId),
-  { ...base, level: "starter", goal: "general" },
+  starterProfile,
   state,
   "general",
   30,
@@ -174,8 +176,9 @@ const starterReplacements = replacementOptions(
   starterProgram.workouts[0].allowedGroups,
   starterItem.requestedGroup,
 );
-if (starterReplacements.some((exercise) => exercise.app.complexity > 1)) {
-  throw new Error("profile-default substitutions must respect the hard difficulty ceiling");
+if (starterReplacements.some((exercise) =>
+  !allowsStageComplexity(exercise, starterProfile, maxComplexity(starterProfile.level)))) {
+  throw new Error("profile-default substitutions must respect the stage-aware difficulty gate");
 }
 let broaderReplacementSeen = false;
 for (const exercise of starterReplacements) {
@@ -216,9 +219,9 @@ for (const level of levels) {
               throw new Error(`matrix ${matrixCases}: session capacity was not respected`);
             }
             for (const item of program.workouts.flatMap((workout) => workout.exercises)) {
-              const complexity = exerciseById.get(item.exerciseId)?.app.complexity;
-              if (complexity > maxComplexity(level)) {
-                throw new Error(`matrix ${matrixCases}: ${complexity}/4 exceeded ${level}`);
+              const exercise = exerciseById.get(item.exerciseId);
+              if (!allowsStageComplexity(exercise, profile, maxComplexity(level))) {
+                throw new Error(`matrix ${matrixCases}: ${exercise?.app.complexity}/4 violated the ${level} stage-aware difficulty gate`);
               }
             }
             matrixCases += 1;
