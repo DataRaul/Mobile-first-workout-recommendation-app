@@ -9,7 +9,10 @@ import {
   getSplitPresets,
   maxComplexity,
 } from "../src/programme.js";
-import { allowsStageComplexity } from "../src/recommendation-priors.js";
+import {
+  allowsStageComplexity,
+  exerciseRecommendationPrior,
+} from "../src/recommendation-priors.js";
 
 const sourceFlag = process.argv.indexOf("--source");
 const sourcePath = sourceFlag >= 0 ? process.argv[sourceFlag + 1] : null;
@@ -59,6 +62,20 @@ let zeroCoverageGroups = 0;
 const zeroCoverageByGoal = {};
 const zeroCoverageByEquipment = {};
 const zeroCoverageExamples = [];
+let starterHighSkillSelections = 0;
+let starterUnstableSelections = 0;
+let starterBridgeSelections = 0;
+let defaultAvoidSelections = 0;
+let establishedSimpleSelections = 0;
+const starterHighSkillExamples = [];
+const starterUnstableExamples = [];
+const starterBridgeExamples = [];
+const defaultAvoidExamples = [];
+const establishedSimpleExamples = [];
+
+function pushExample(target, value, limit = 12) {
+  if (target.length < limit) target.push(value);
+}
 
 for (const level of levels) {
   for (const goal of goals) {
@@ -121,6 +138,46 @@ for (const level of levels) {
                 allowsStageComplexity(exercise, profile, maxComplexity(level)),
                 `case ${cases}: ${exercise.name} violated the ${level} stage-aware difficulty gate`,
               );
+
+              const prior = exerciseRecommendationPrior(exercise, profile);
+              const diagnostic = {
+                case: cases,
+                level,
+                goal,
+                days,
+                split: preset.id,
+                equipmentPreset,
+                sessionMinutes,
+                exercise: exercise.name,
+                complexity: exercise.app.complexity,
+                priorScore: prior.score,
+                reasons: prior.reasons,
+              };
+
+              if (level === "starter" && prior.highSkill) {
+                starterHighSkillSelections += 1;
+                pushExample(starterHighSkillExamples, diagnostic);
+              }
+              if (level === "starter" && prior.unstableSetup) {
+                starterUnstableSelections += 1;
+                pushExample(starterUnstableExamples, diagnostic);
+              }
+              if (level === "starter" && prior.starterBridge) {
+                starterBridgeSelections += 1;
+                pushExample(starterBridgeExamples, diagnostic);
+              }
+              if (exercise.app.programming?.defaultAvoid) {
+                defaultAvoidSelections += 1;
+                pushExample(defaultAvoidExamples, diagnostic);
+              }
+              if (
+                level === "pro" &&
+                exercise.app.complexity <= 2 &&
+                (prior.commonDefault || prior.stableSetup || prior.loadable)
+              ) {
+                establishedSimpleSelections += 1;
+                pushExample(establishedSimpleExamples, diagnostic);
+              }
             }
 
             const coverageEntries = Object.entries(program.weeklyCoverage.groups);
@@ -232,6 +289,21 @@ assert.equal(
   0,
   "no planned muscle may fall below its direct-coverage minimum merely to increase exercise variety",
 );
+assert.equal(
+  starterHighSkillSelections,
+  0,
+  `Starter programmes must not default to high-skill exercises: ${JSON.stringify(starterHighSkillExamples)}`,
+);
+assert.equal(
+  defaultAvoidSelections,
+  0,
+  `defaultAvoid exercises must not win automatic programme slots: ${JSON.stringify(defaultAvoidExamples)}`,
+);
+assert.ok(
+  establishedSimpleSelections > 0,
+  "established trainees should continue to receive simple productive exercises when they fit the requested role",
+);
+
 console.log(JSON.stringify({
   cases,
   workouts,
@@ -254,5 +326,17 @@ console.log(JSON.stringify({
   underfilledWorkouts,
   minimumWorkoutExercises,
   underfilledExamples,
+  fitnessSemanticAudit: {
+    starterHighSkillSelections,
+    starterHighSkillExamples,
+    starterUnstableSelections,
+    starterUnstableExamples,
+    starterBridgeSelections,
+    starterBridgeExamples,
+    defaultAvoidSelections,
+    defaultAvoidExamples,
+    establishedSimpleSelections,
+    establishedSimpleExamples,
+  },
 }, null, 2));
 console.log("Real 1,324-exercise recommendation matrix passed.");
