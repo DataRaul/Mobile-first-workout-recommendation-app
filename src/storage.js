@@ -1,7 +1,7 @@
 const KEY = "workout-recommender.state.v2";
 
 export const DEFAULT_STATE = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   profile: null,
   draftProgram: null,
   draftComparison: null,
@@ -18,15 +18,55 @@ export const DEFAULT_STATE = {
     lastBackupLocation: null,
     readinessCheck: null,
     weightUnit: "kg",
+    useRestTimer: true,
+    defaultRestSeconds: null,
+    keepScreenAwake: false,
   },
 };
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
+function normalizeTimer(timer, legacyEndsAt = null) {
+  const source = timer && typeof timer === "object" ? timer : null;
+  const legacyDeadline = Number(legacyEndsAt) || null;
+  const allowedStatuses = new Set(["active", "paused", "completed", "cancelled"]);
+  const status = allowedStatuses.has(source?.status)
+    ? source.status
+    : legacyDeadline
+      ? "active"
+      : null;
+  if (!status) return null;
+
+  const duration = Number(source?.durationSeconds);
+  const recommended = Number(source?.recommendedRestSeconds);
+  const pausedRemaining = Number(source?.pausedRemainingSeconds);
+  const endsAt = Number(source?.endsAt) || legacyDeadline;
+  return {
+    status,
+    startedAt: Number(source?.startedAt) || null,
+    endsAt: status === "active" ? endsAt || null : null,
+    durationSeconds:
+      Number.isFinite(duration) && duration > 0
+        ? Math.min(3600, Math.max(1, Math.round(duration)))
+        : legacyDeadline
+          ? Math.max(1, Math.ceil((legacyDeadline - Date.now()) / 1000))
+          : null,
+    recommendedRestSeconds:
+      Number.isFinite(recommended) && recommended > 0 ? Math.round(recommended) : null,
+    pausedRemainingSeconds:
+      status === "paused" && Number.isFinite(pausedRemaining)
+        ? Math.max(0, Math.round(pausedRemaining))
+        : null,
+    completedAt: Number(source?.completedAt) || null,
+    cancelledAt: Number(source?.cancelledAt) || null,
+  };
+}
+
 function normalizeState(value) {
   const normalized = {
     ...clone(DEFAULT_STATE),
     ...value,
+    schemaVersion: 3,
     history: Array.isArray(value.history) ? value.history : [],
     gym: {
       ...clone(DEFAULT_STATE.gym),
@@ -48,6 +88,13 @@ function normalizeState(value) {
     normalized.preferences.language = "en";
   }
   normalized.preferences.weightUnit = normalized.preferences.weightUnit === "lb" ? "lb" : "kg";
+  normalized.preferences.useRestTimer = normalized.preferences.useRestTimer !== false;
+  const preferredRest = Number(normalized.preferences.defaultRestSeconds);
+  normalized.preferences.defaultRestSeconds =
+    Number.isFinite(preferredRest) && preferredRest > 0
+      ? Math.min(600, Math.max(15, Math.round(preferredRest)))
+      : null;
+  normalized.preferences.keepScreenAwake = normalized.preferences.keepScreenAwake === true;
 
   if (!normalized.profile) {
     normalized.draftProgram = null;
@@ -69,6 +116,17 @@ function normalizeState(value) {
     (!normalized.activeProgram || normalized.activeSession.programId !== normalized.activeProgram.id)
   ) {
     normalized.activeSession = null;
+  }
+
+  if (normalized.activeSession) {
+    normalized.activeSession = {
+      ...normalized.activeSession,
+      timer: normalizeTimer(
+        normalized.activeSession.timer,
+        normalized.activeSession.restTimerEndsAt,
+      ),
+    };
+    delete normalized.activeSession.restTimerEndsAt;
   }
 
   if (
@@ -118,7 +176,7 @@ function migrateLegacy() {
 export function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (saved?.schemaVersion === 2) {
+    if ([2, 3].includes(saved?.schemaVersion)) {
       return normalizeState(saved);
     }
   } catch {}
@@ -126,6 +184,7 @@ export function loadState() {
 }
 
 export function saveState(state) {
+  state.schemaVersion = 3;
   localStorage.setItem(KEY, JSON.stringify(state));
   return state;
 }
@@ -175,7 +234,9 @@ export async function exportState(state, { chooseLocation = false } = {}) {
 
 export async function previewImportState(file) {
   const parsed = JSON.parse(await file.text());
-  if (parsed?.schemaVersion !== 2) throw new Error("This is not a Workout Recommender v2 export.");
+  if (![2, 3].includes(parsed?.schemaVersion)) {
+    throw new Error("This is not a supported Workout Recommender export.");
+  }
   return normalizeState(parsed);
 }
 
