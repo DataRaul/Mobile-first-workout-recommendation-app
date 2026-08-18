@@ -18,6 +18,7 @@ const COMMON_DEFAULT_PATTERNS = [
   "chest press",
   "bench press",
   "incline press",
+  "shoulder press",
   "lat pulldown",
   "pulldown",
   "seated row",
@@ -35,7 +36,40 @@ const COMMON_DEFAULT_PATTERNS = [
   "hammer curl",
   "triceps pushdown",
   "calf raise",
+  "romanian deadlift",
+  "goblet squat",
   "plank",
+];
+
+// Starter bridges are intentionally narrower than the general common-default
+// vocabulary. A complexity-2 exercise may cross the old Starter ceiling only
+// when it belongs to a canonical, progressively loadable family. This prevents
+// broad names (for example any plank variant) or merely stable novelty from
+// becoming novice defaults.
+const STARTER_BRIDGE_PATTERNS = [
+  "chest press",
+  "bench press",
+  "incline press",
+  "shoulder press",
+  "lat pulldown",
+  "pulldown",
+  "seated row",
+  "cable row",
+  "leg press",
+  "hack squat",
+  "leg extension",
+  "leg curl",
+  "hamstring curl",
+  "hip thrust",
+  "glute bridge",
+  "lateral raise",
+  "face pull",
+  "biceps curl",
+  "hammer curl",
+  "triceps pushdown",
+  "calf raise",
+  "romanian deadlift",
+  "goblet squat",
 ];
 
 const HIGH_SKILL_PATTERNS = [
@@ -100,6 +134,7 @@ export function exerciseRecommendationPrior(exercise, profile = {}) {
   const mechanics = app.mechanics || {};
   const complexity = Number(app.complexity) || 1;
   const commonDefault = hasPattern(name, COMMON_DEFAULT_PATTERNS);
+  const starterBridgeFamily = hasPattern(name, STARTER_BRIDGE_PATTERNS);
   const highSkill = hasPattern(name, HIGH_SKILL_PATTERNS) || complexity >= 4;
   const unstableSetup =
     hasPattern(name, UNSTABLE_SETUP_PATTERNS) ||
@@ -114,10 +149,11 @@ export function exerciseRecommendationPrior(exercise, profile = {}) {
   const starterBridge =
     stage === "orientation" &&
     complexity === 2 &&
+    starterBridgeFamily &&
+    loadable &&
     !highSkill &&
     !unstableSetup &&
-    !app.programming?.defaultAvoid &&
-    (commonDefault || stableSetup);
+    !app.programming?.defaultAvoid;
 
   let score = 0;
   const reasons = [];
@@ -175,6 +211,7 @@ export function exerciseRecommendationPrior(exercise, profile = {}) {
     stage,
     stageLabel: STAGE_LABELS[stage],
     commonDefault,
+    starterBridgeFamily,
     stableSetup,
     unstableSetup,
     loadable,
