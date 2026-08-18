@@ -1,0 +1,36 @@
+name: Apply timer UX revision
+
+on:
+  push:
+    branches: [agent/timer-ux-background-safe]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[timer-ux-applied]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Apply targeted revision
+        run: python3 scripts/apply-timer-ux-revision.py
+      - name: Validate repository
+        run: npm run validate
+      - name: Verify enrichment reproducibility
+        run: npm run enrichment:check
+      - name: Run programme regression explicitly
+        run: node scripts/test-programme.mjs
+      - name: Commit applied revision
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app.js src/config.js src/session.js src/storage.js styles.css service-worker.js package.json README.md scripts/test-rest-timer-ux.mjs
+          git commit -m "Implement background-safe optional rest timer UX [timer-ux-applied]"
+          git push origin HEAD:agent/timer-ux-background-safe
