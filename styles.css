@@ -1826,3 +1826,83 @@ img.media-unavailable {
     grid-column: 1 / -1;
   }
 }
+
+/* Rest timer UX v3.9.0 */
+.active-set-card {
+  border-color: rgba(142, 227, 178, 0.48);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+.active-set-heading,
+.rest-timer,
+.rest-readout,
+.rest-controls,
+.timer-profile-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.active-set-heading {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.active-set-heading h2 { margin: 3px 0 0; }
+.active-set-prescription { margin-bottom: 12px; }
+.set-row.current {
+  border-color: rgba(142, 227, 178, 0.52);
+  background: rgba(142, 227, 178, 0.07);
+}
+.set-check {
+  min-width: 86px;
+  min-height: 44px;
+  padding-inline: 10px;
+}
+
+.rest-timer {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(142, 227, 178, 0.35);
+  border-radius: 14px;
+  background: rgba(142, 227, 178, 0.07);
+}
+.rest-timer strong,
+.rest-timer small { display: block; }
+.rest-timer strong { font-size: 1.2rem; }
+.rest-timer small { margin-top: 3px; color: var(--muted); }
+.rest-controls { flex-wrap: wrap; }
+.rest-compact-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+.rest-compact-field input {
+  width: 82px;
+  padding: 8px 10px;
+}
+.timer-profile-controls {
+  align-items: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .active-set-card { padding: 14px; }
+  .set-table-head,
+  .set-row { grid-template-columns: 28px repeat(3, minmax(0, 1fr)) 88px; }
+  .set-row input { min-width: 0; padding: 11px 7px; }
+  .set-check { min-width: 82px; padding: 9px 6px; font-size: 0.76rem; }
+  .rest-timer,
+  .rest-controls { width: 100%; }
+  .rest-controls > * { min-height: 44px; }
+  .timer-profile-controls { grid-template-columns: 1fr; }
+  .active-set-card input:focus { scroll-margin-bottom: 160px; }
+}
