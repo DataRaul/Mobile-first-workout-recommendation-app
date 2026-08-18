@@ -30,6 +30,11 @@ const benchPress = exercise("Barbell bench press", "barbell", 2, {
   stability: "moderate",
   loadability: "high",
 });
+const unstableIncline = exercise("Dumbbell incline press on exercise ball", "dumbbell", 2, {
+  stability: "high",
+  loadability: "moderate",
+  supported: false,
+});
 const planche = exercise("Full planche", "body weight", 4, {
   stability: "high",
   loadability: "low",
@@ -54,9 +59,19 @@ assert.equal(
   true,
   "a common, progressively loadable complexity-2 exercise can bridge a starter ceiling",
 );
+assert.equal(
+  allowsStageComplexity(unstableIncline, starter, 1),
+  false,
+  "a familiar exercise name must not bridge the Starter ceiling when the variant adds unstable setup demand",
+);
 assert.ok(
   exerciseRecommendationPrior(cableRaise, advanced).score > 0,
   "simple cable/isolation work must remain positively usable for established trainees",
+);
+assert.ok(
+  exerciseRecommendationPrior(cableRaise, advanced).score >
+    exerciseRecommendationPrior(planche, advanced).score,
+  "established status alone must not make high-skill novelty a better default than simple productive work",
 );
 assert.equal(
   splitStagePrior(3, { trainingMonths: 1 }).preferredPresetIds[0],
