@@ -9,6 +9,7 @@ import {
   getSplitPresets,
   maxComplexity,
 } from "../src/programme.js";
+import { allowsStageComplexity } from "../src/recommendation-priors.js";
 
 const sourceFlag = process.argv.indexOf("--source");
 const sourcePath = sourceFlag >= 0 ? process.argv[sourceFlag + 1] : null;
@@ -117,8 +118,8 @@ for (const level of levels) {
               const exercise = exerciseById.get(item.exerciseId);
               assert.ok(exercise, `case ${cases}: selected exercise exists`);
               assert.ok(
-                exercise.app.complexity <= maxComplexity(level),
-                `case ${cases}: ${exercise.name} exceeded the ${level} difficulty ceiling`,
+                allowsStageComplexity(exercise, profile, maxComplexity(level)),
+                `case ${cases}: ${exercise.name} violated the ${level} stage-aware difficulty gate`,
               );
             }
 
