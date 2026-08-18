@@ -105,6 +105,116 @@ export function restSecondsRemaining(endTimestamp, now = Date.now()) {
   return Math.max(0, Math.ceil((Number(endTimestamp) - now) / 1000));
 }
 
+export function normalizeRestDuration(seconds, fallback = null) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(3600, Math.max(1, Math.round(value)));
+}
+
+export function createRestTimer(
+  durationSeconds,
+  { now = Date.now(), recommendedRestSeconds = null } = {},
+) {
+  const duration = normalizeRestDuration(durationSeconds, 0);
+  const recommended = normalizeRestDuration(recommendedRestSeconds, null);
+  return {
+    status: duration > 0 ? "active" : "cancelled",
+    startedAt: now,
+    endsAt: duration > 0 ? now + duration * 1000 : null,
+    durationSeconds: duration,
+    recommendedRestSeconds: recommended,
+    pausedRemainingSeconds: null,
+    completedAt: null,
+    cancelledAt: duration > 0 ? null : now,
+  };
+}
+
+export function restTimerRemaining(timer, now = Date.now()) {
+  if (!timer) return 0;
+  if (timer.status === "paused") {
+    return Math.max(0, Number(timer.pausedRemainingSeconds) || 0);
+  }
+  if (timer.status !== "active") return 0;
+  return restSecondsRemaining(timer.endsAt, now);
+}
+
+export function reconcileRestTimer(timer, now = Date.now()) {
+  if (!timer || timer.status !== "active") return timer;
+  if (restTimerRemaining(timer, now) > 0) return timer;
+  return {
+    ...timer,
+    status: "completed",
+    endsAt: null,
+    pausedRemainingSeconds: 0,
+    completedAt: now,
+  };
+}
+
+export function pauseRestTimer(timer, now = Date.now()) {
+  if (!timer || timer.status !== "active") return timer;
+  const remaining = restTimerRemaining(timer, now);
+  if (remaining <= 0) return reconcileRestTimer(timer, now);
+  return {
+    ...timer,
+    status: "paused",
+    endsAt: null,
+    pausedRemainingSeconds: remaining,
+  };
+}
+
+export function resumeRestTimer(timer, now = Date.now()) {
+  if (!timer || timer.status !== "paused") return timer;
+  const remaining = Math.max(0, Number(timer.pausedRemainingSeconds) || 0);
+  if (remaining <= 0) {
+    return { ...timer, status: "completed", pausedRemainingSeconds: 0, completedAt: now };
+  }
+  return {
+    ...timer,
+    status: "active",
+    endsAt: now + remaining * 1000,
+    pausedRemainingSeconds: null,
+  };
+}
+
+export function adjustRestTimer(timer, deltaSeconds, now = Date.now()) {
+  if (!timer || !["active", "paused"].includes(timer.status)) return timer;
+  const adjusted = Math.min(
+    3600,
+    Math.max(0, restTimerRemaining(timer, now) + Number(deltaSeconds || 0)),
+  );
+  if (adjusted <= 0) {
+    return {
+      ...timer,
+      status: "completed",
+      endsAt: null,
+      pausedRemainingSeconds: 0,
+      completedAt: now,
+    };
+  }
+  if (timer.status === "paused") {
+    return { ...timer, pausedRemainingSeconds: adjusted };
+  }
+  return { ...timer, endsAt: now + adjusted * 1000 };
+}
+
+export function resetRestTimer(timer, durationSeconds = timer?.durationSeconds, now = Date.now()) {
+  return createRestTimer(durationSeconds, {
+    now,
+    recommendedRestSeconds: timer?.recommendedRestSeconds ?? null,
+  });
+}
+
+export function cancelRestTimer(timer, now = Date.now()) {
+  return {
+    ...(timer || {}),
+    status: "cancelled",
+    endsAt: null,
+    pausedRemainingSeconds: 0,
+    completedAt: null,
+    cancelledAt: now,
+  };
+}
+
 const SET_LOG_FIELDS = new Set(["weight", "reps", "rir"]);
 
 export function updateSetLogValue(set, field, value) {
