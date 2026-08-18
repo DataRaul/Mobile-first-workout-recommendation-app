@@ -1,0 +1,38 @@
+name: Timer UX feature bootstrap
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ github.event.pull_request.head.ref == 'agent/timer-ux-background-safe' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/timer-ux-background-safe
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Apply revision once
+        shell: bash
+        run: |
+          if git log -1 --pretty=%B | grep -q '\[timer-ux-applied\]'; then
+            echo 'Timer UX revision already applied.'
+            exit 0
+          fi
+          python3 scripts/apply-timer-ux-revision.py
+          npm run validate
+          npm run enrichment:check
+          node scripts/test-programme.mjs
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md package.json service-worker.js styles.css src/app.js src/config.js src/session.js src/storage.js scripts/test-rest-timer-ux.mjs
+          git commit -m 'Implement background-safe optional rest timer UX [timer-ux-applied]'
+          git push origin HEAD:agent/timer-ux-background-safe
