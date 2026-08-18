@@ -26,14 +26,14 @@ Training months, when available, are a weak prior:
 - 6–<12 months: developing;
 - 12+ months: established.
 
-When training months are unavailable, the existing profile experience level is used only as a fallback stage proxy.
+When training months are unavailable, the existing profile experience level is used only as a fallback stage proxy. The current app does not add a new `trainingMonths` onboarding/profile field in this change; doing so is a separate UX/product decision.
 
 These are product routing bands, not biological thresholds. Promotion must not occur solely because time elapsed.
 
 ## Integrated recommendation behavior
 
 - Common, stable, teachable and loadable exercises receive a positive novice prior when several candidates satisfy the same role.
-- A bounded complexity-2 Starter bridge is allowed only when the specific exercise variant remains an appropriate default. A familiar exercise name alone is not enough.
+- A bounded complexity-2 Starter bridge is allowed only for explicit canonical/loadable exercise families and only when the specific variant remains appropriate. Stable setup by itself is not enough, and a broad familiar name fragment by itself is not enough.
 - Unstable variants such as exercise-ball or balance-device versions do not receive the Starter bridge merely because their base movement is common.
 - High-skill novelty is penalized as a default recommendation; being an established trainee does not create a requirement to use technically harder exercises.
 - Simple machine, cable and isolation exercises remain valid for established trainees when they fit the goal and slot.
@@ -55,7 +55,8 @@ The calibration branch now:
 4. persists recommendation reason/stage metadata in programme prescriptions and replacement metadata;
 5. uses `splitStagePrior()` to choose a stage-appropriate default split without hiding or replacing explicit valid presets;
 6. preserves seeded variation among sufficiently similar candidates;
-7. validates the resulting behavior with self-contained and real-catalogue matrices.
+7. validates the resulting behavior with self-contained and real-catalogue matrices;
+8. semantically audits real-catalogue selections for novice high-skill defaults, unstable novice defaults, bounded Starter bridges, `defaultAvoid` wins and retention of simple productive work for established users.
 
 ## Calibration evidence
 
@@ -66,21 +67,38 @@ Latest validated branch coverage includes:
 - the pinned real 1,324-exercise catalogue matrix: 4,480 profile/preset cases, 15,680 workouts and 101,920 exercise slots;
 - zero unusably short real-catalogue workouts;
 - zero real-catalogue planned muscles with zero direct coverage;
-- zero avoidable below-coverage cases.
+- zero avoidable below-coverage cases;
+- zero Starter high-skill selections;
+- zero Starter unstable-setup selections;
+- zero `defaultAvoid` exercises winning automatic programme slots;
+- 4,258 bounded Starter-bridge selections on the real matrix, with examples concentrated in canonical families such as supported/cable/dumbbell shoulder presses and incline/bench presses;
+- 22,896 real-matrix selections of simple/productive complexity-1/2 exercises for established users, confirming that advanced status does not force novelty or technical escalation.
 
 The real-catalogue matrix still reports 40 below-target coverage cases, all classified as catalogue-limited rather than avoidable. They are concentrated in the Starter + bodyweight + `focused_three_day` shoulder combination, where only one exact eligible shoulder exercise exists for templates requesting repeated direct shoulder slots. This is an exercise-catalogue/product limitation, not evidence that the Fitness Brain needs a new programming rule.
 
-## Failure found and corrected
+## Failures found and corrected
+
+### 1. Unstable familiar-name false bridge
 
 The first real-catalogue validation exposed a false Starter bridge for `dumbbell incline press on exercise ball`. The movement name matched the broad `incline press` common-default prior, while the actual variant added unstable setup demand.
 
-The correction was made in the app calibration layer:
+Correction:
 - explicit unstable-setup detection;
 - unstable variants cannot receive the bounded Starter bridge;
 - unstable setup receives an orientation-stage recommendation penalty;
-- the regression is now locked in `scripts/test-recommendation-priors.mjs`.
+- regression locked in `scripts/test-recommendation-priors.mjs`.
 
-This failure did **not** justify expanding the Fitness Brain. The Brain already distinguishes stability/setup cost from exercise-name familiarity; the implementation had failed to preserve that distinction.
+### 2. Stable-only / broad-name bridge was too permissive
+
+After the first fix, semantic inspection showed that the bridge still admitted examples such as `reverse plank with leg lift` and `dumbbell Arnold press`. Neither was a safety failure, but they demonstrated that merely being stable—or sharing a broad familiar name fragment—was too weak a reason to override the old Starter complexity ceiling.
+
+Correction:
+- a separate, narrower `STARTER_BRIDGE_PATTERNS` vocabulary now defines canonical bridge families;
+- complexity-2 bridging requires membership in that family **and** progressive loadability;
+- high-skill, unstable and `defaultAvoid` variants still fail closed;
+- explicit regressions lock out stable novelty and broad-name false positives while retaining appropriate bridges such as bench press and supported shoulder press.
+
+Both failures were app-calibration defects, not Fitness Brain knowledge gaps. The Brain already separates exercise-name familiarity, setup/stability cost, intrinsic difficulty and recommendation utility; the implementation had failed to preserve those distinctions tightly enough.
 
 ## Knowledge Core dependency / merge boundary
 
