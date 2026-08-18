@@ -149,3 +149,23 @@ This project is intended for personal, educational and non-commercial use. See `
 - The selected experience level acts as a hard maximum complexity filter.
 - Programme review, routine editing, and active workouts offer a direct substitute picker.
 - Substitute choices are filtered by muscle or movement similarity, goal, equipment, pain constraints, and complexity cap.
+
+## Rest timer and live-set UX (3.9.0)
+
+The rest timer is an optional workout aid, not a progression gate. Profile and first-time setup now expose **Use rest timer**, an optional persistent default rest override, and **Keep screen awake during workout**. Leaving the override blank preserves the programme's goal-based rest prescription. A user override changes execution timing only; the programme recommendation stays separate.
+
+Active timer state is stored inside the active workout session with status, start timestamp, absolute deadline, configured duration and programme recommendation. Visible `setInterval()` callbacks only repaint the countdown. Elapsed-time truth comes from `Date.now()` versus the persisted deadline, and `visibilitychange`, window focus and `pageshow` reconcile the state after suspension or reload. A timer that expires while the app is suspended is immediately completed when execution resumes.
+
+Mobile browsers and installed PWAs may suspend JavaScript while the phone is locked. The app therefore does **not** claim continuous background JavaScript or guaranteed background sound/vibration. The timer preserves correct wall-clock elapsed time across suspension. Vibration is best-effort when completion is observed while JavaScript can run. The optional Screen Wake Lock request can keep the display awake during an active workout on supported browsers and gracefully does nothing elsewhere.
+
+During a workout the existing set-entry card is now before exercise media, technique, previous performance and notes. Exercise name, set context, prescription, weight, reps, RIR and the complete-set action are therefore the first training controls. The current incomplete set is highlighted, decimal loads remain supported, and a completed set prefills the next blank set's load without changing completed history.
+
+Timer controls support Start, Pause/Resume, Reset, Skip, +15 seconds, -15 seconds and direct duration editing. Completing a working set starts the configured timer only when the preference is enabled, and timer completion is never required to continue.
+
+### Manual phone acceptance
+
+1. **No timer:** disable **Use rest timer**, start a workout, complete several sets and confirm no timer interrupts set logging.
+2. **40 seconds:** enable the timer, set the default override to 40 seconds, complete a set and confirm the timer starts from 40 while the programme rest target remains visible separately.
+3. **Screen off:** start a 90-second timer, wait roughly 20 seconds, lock/background the phone, return later and confirm remaining time is derived from the original deadline.
+4. **Deadline passes off-screen:** start a short timer, keep the phone locked beyond the deadline, reopen and confirm it is immediately complete rather than resuming an old visible count.
+5. **Active-set clarity:** on a normal phone viewport confirm exercise name, current set, prescription, weight, reps, RIR and Complete are visible before media, technique and history dominate the screen.

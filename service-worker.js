@@ -1,4 +1,4 @@
-const CACHE = "workout-recommender-v3.8.0-exercise-customization-20260816";
+const CACHE = "workout-recommender-v3.9.0-timer-ux-20260818";
 
 const APP = [
   "./", "./index.html", "./styles.css", "./accessibility.css", "./customization.css", "./manifest.webmanifest",

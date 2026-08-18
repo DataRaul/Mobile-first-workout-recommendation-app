@@ -36,8 +36,14 @@ import {
   latestRecordedSession,
   invalidCompletedSets,
   READINESS_GUIDANCE,
-  restSecondsRemaining,
-  restTimerEnd,
+  adjustRestTimer,
+  cancelRestTimer,
+  createRestTimer,
+  pauseRestTimer,
+  reconcileRestTimer,
+  resetRestTimer,
+  restTimerRemaining,
+  resumeRestTimer,
   sessionCompletion,
   sessionMetrics,
   updateSetLogValue,
@@ -59,6 +65,7 @@ let byId = new Map();
 let browserLimit = 24;
 let progressLimit = 12;
 let restInterval = null;
+let wakeLockSentinel = null;
 let updateAvailable = false;
 
 const $ = (selector) => document.querySelector(selector);
@@ -210,6 +217,24 @@ function weightUnit() {
   return state.preferences?.weightUnit === "lb" ? "lb" : "kg";
 }
 
+function restTimerEnabled() {
+  return state.preferences?.useRestTimer !== false;
+}
+
+function preferredRestSeconds(recommendedSeconds) {
+  const preferred = Number(state.preferences?.defaultRestSeconds);
+  if (Number.isFinite(preferred) && preferred > 0) {
+    return Math.min(600, Math.max(15, Math.round(preferred)));
+  }
+  return Math.max(0, Math.round(Number(recommendedSeconds) || 0));
+}
+
+function clampRestPreference(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.min(600, Math.max(15, Math.round(seconds)));
+}
+
 function loggedWeight(value) {
   const displayed = weightForDisplay(value, weightUnit());
   return displayed || "—";
@@ -231,6 +256,43 @@ function view(viewId) {
   });
   $("#bottomNav").hidden = ["loadingView", "onboardingView", "plannerView", "sessionView"].includes(viewId);
   window.scrollTo({ top: 0, behavior: "auto" });
+  void syncWakeLock(viewId === "sessionView");
+}
+
+async function releaseWakeLock() {
+  const sentinel = wakeLockSentinel;
+  wakeLockSentinel = null;
+  if (!sentinel) return;
+  try {
+    await sentinel.release();
+  } catch {
+    // Wake Lock is best-effort only.
+  }
+}
+
+async function syncWakeLock(workoutVisible = $("#sessionView")?.classList.contains("active")) {
+  const shouldHold =
+    Boolean(state.preferences?.keepScreenAwake) &&
+    Boolean(state.activeSession) &&
+    Boolean(workoutVisible) &&
+    !document.hidden &&
+    Boolean(navigator.wakeLock?.request);
+
+  if (!shouldHold) {
+    await releaseWakeLock();
+    return;
+  }
+  if (wakeLockSentinel) return;
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request("screen");
+    wakeLockSentinel.addEventListener(
+      "release",
+      () => { wakeLockSentinel = null; },
+      { once: true },
+    );
+  } catch {
+    wakeLockSentinel = null;
+  }
 }
 
 function exerciseById(id) {
@@ -998,6 +1060,24 @@ function renderOnboarding(edit = false) {
           </select>
           <small>Workout entries and history are converted when you change this display unit.</small>
         </label>
+        <fieldset class="profile-subsection timer-preferences">
+          <legend>Rest timer</legend>
+          <div class="grid two">
+            <label class="option">
+              <input type="checkbox" name="useRestTimer" ${state.preferences?.useRestTimer !== false ? "checked" : ""}>
+              <span><strong>Use rest timer</strong><small>When off, completing a set never starts or interrupts with a timer.</small></span>
+            </label>
+            <label class="field">Default rest override (seconds)
+              <input type="number" name="defaultRestSeconds" min="15" max="600" step="5" inputmode="numeric" list="setupRestDurationChoices" value="${state.preferences?.defaultRestSeconds ?? ""}" placeholder="Use programme target">
+              <small>Leave blank to use each programme recommendation.</small>
+            </label>
+          </div>
+          <label class="option">
+            <input type="checkbox" name="keepScreenAwake" ${state.preferences?.keepScreenAwake ? "checked" : ""}>
+            <span><strong>Keep screen awake during workout</strong><small>Uses Screen Wake Lock when supported; timer correctness does not depend on it.</small></span>
+          </label>
+          <datalist id="setupRestDurationChoices"><option value="30"><option value="40"><option value="45"><option value="60"><option value="75"><option value="90"><option value="120"><option value="150"></datalist>
+        </fieldset>
         <fieldset id="customEquipment" class="profile-subsection ${profile.equipmentPreset === "custom" ? "" : "hidden"}">
         <legend>Custom equipment</legend>
         <div class="option-grid">${COMMON_EQUIPMENT.map(
@@ -1272,6 +1352,9 @@ function renderOnboarding(edit = false) {
       ...state.preferences,
       profileStorage: selectedStorage,
       weightUnit: String(form.get("weightUnit")) === "lb" ? "lb" : "kg",
+      useRestTimer: form.get("useRestTimer") === "on",
+      defaultRestSeconds: clampRestPreference(form.get("defaultRestSeconds")),
+      keepScreenAwake: form.get("keepScreenAwake") === "on",
     };
 
     try {
@@ -1779,6 +1862,7 @@ function createSession() {
     workoutName: workout.name,
     startedAt: new Date().toISOString(),
     currentIndex: 0,
+    timer: null,
     allowedGroups: workout.allowedGroups || workout.emphasis || [],
     exercises: workout.exercises.map((item) => {
       const alreadyPerformed = state.history.some(
@@ -1850,6 +1934,13 @@ function renderSession({ focusHeading = false } = {}) {
   const totalSets = session.exercises.flatMap((entry) => entry.setsLog).length;
   const instructions = instructionSteps(exercise);
   const unit = weightUnit();
+  const firstIncompleteSet = item.setsLog.findIndex((set) => !set.done);
+  const activeSetIndex = firstIncompleteSet === -1
+    ? Math.max(0, item.setsLog.length - 1)
+    : firstIncompleteSet;
+  const activeSetLabel = firstIncompleteSet === -1
+    ? "All planned sets complete"
+    : `Set ${activeSetIndex + 1} of ${item.setsLog.length}`;
 
   $("#sessionView").innerHTML = `
     <div class="exercise-stage">
@@ -1861,7 +1952,29 @@ function renderSession({ focusHeading = false } = {}) {
         <button id="exitSession" class="btn ghost small">Exit</button>
       </div>
       <div class="progress-track" role="progressbar" aria-label="Workout sets completed" aria-valuemin="0" aria-valuemax="${totalSets}" aria-valuenow="${completedSets}"><span style="width:${(completedSets / totalSets) * 100}%"></span></div>
-      <article class="card" style="margin-top:14px">
+      <article class="card active-set-card">
+        <div class="active-set-heading"><div><div class="eyebrow">${escapeHtml(activeSetLabel)}</div><h2>Weight · reps · RIR</h2></div><span class="chip">${item.sets} × ${escapeHtml(item.reps)}</span></div>
+        <p class="active-set-prescription">Prescription: ${item.sets} × ${escapeHtml(item.reps)} · programme rest ${item.restSeconds}s${state.preferences?.defaultRestSeconds ? ` · preferred timer ${preferredRestSeconds(item.restSeconds)}s` : ""}. Weight is optional for bodyweight movements. RIR means repetitions in reserve.</p>
+        <div class="set-table">
+          <div class="set-table-head" aria-hidden="true"><span>Set</span><span>Weight (${unit})</span><span>Reps / sec</span><span>RIR</span><span>Done</span></div>
+          ${item.setsLog
+          .map((set, index) => {
+            const validation = set.done ? validateSetLog(set) : { valid: true, errors: {} };
+            const errorText = Object.values(validation.errors).join(" ");
+            return `<div class="set-row ${set.done ? "done" : ""} ${index === activeSetIndex && !set.done ? "current" : ""} ${validation.valid ? "" : "invalid"}" data-set="${index}">
+              <strong>${index + 1}</strong>
+              <input type="number" min="0" max="${unit === "lb" ? "11023" : "5000"}" step="0.1" data-field="weight" value="${escapeHtml(weightForDisplay(set.weight, unit))}" inputmode="decimal" aria-label="Set ${index + 1} weight in ${unit}" aria-invalid="${Boolean(validation.errors.weight)}" placeholder="${unit}">
+              <input type="number" min="1" max="999" step="1" data-field="reps" value="${escapeHtml(set.reps)}" inputmode="numeric" aria-label="Set ${index + 1} repetitions or seconds" aria-invalid="${Boolean(validation.errors.reps)}" placeholder="reps">
+              <input type="number" min="0" max="10" step="1" class="rir-field" data-field="rir" value="${escapeHtml(set.rir)}" inputmode="numeric" aria-label="Set ${index + 1} repetitions in reserve" aria-invalid="${Boolean(validation.errors.rir)}" placeholder="RIR">
+              <button type="button" class="set-check ${set.done ? "done" : ""}" data-action="set-done" aria-label="${set.done ? "Mark" : "Mark"} set ${index + 1} ${set.done ? "not complete" : "complete"}">${set.done ? "✓ Done" : "Complete"}</button>
+              <small class="set-error" role="alert" ${errorText ? "" : "hidden"}>${escapeHtml(errorText)}</small>
+            </div>`;
+          })
+          .join("")}</div>
+      </article>
+      <div id="restTimer"></div>
+
+      <article class="card exercise-info-card" style="margin-top:14px">
         <img id="sessionMedia" class="exercise-media" src="${mediaUrl(exercise.image)}" alt="${escapeHtml(exercise.name)}">
         <div class="exercise-title-row">
           <div>
@@ -1896,26 +2009,6 @@ function renderSession({ focusHeading = false } = {}) {
           </div>
         </div>
       </article>
-      <article class="card">
-        <h2>Record sets</h2>
-        <p>Weight is optional for bodyweight movements. Enter repetitions or seconds before marking a set complete. RIR means repetitions in reserve.</p>
-        <div class="set-table">
-          <div class="set-table-head" aria-hidden="true"><span>Set</span><span>Weight (${unit})</span><span>Reps / sec</span><span>RIR</span><span>Done</span></div>
-          ${item.setsLog
-          .map((set, index) => {
-            const validation = set.done ? validateSetLog(set) : { valid: true, errors: {} };
-            const errorText = Object.values(validation.errors).join(" ");
-            return `<div class="set-row ${set.done ? "done" : ""} ${validation.valid ? "" : "invalid"}" data-set="${index}">
-              <strong>${index + 1}</strong>
-              <input type="number" min="0" max="${unit === "lb" ? "11023" : "5000"}" step="0.1" data-field="weight" value="${escapeHtml(weightForDisplay(set.weight, unit))}" inputmode="decimal" aria-label="Set ${index + 1} weight in ${unit}" aria-invalid="${Boolean(validation.errors.weight)}" placeholder="${unit}">
-              <input type="number" min="1" max="999" step="1" data-field="reps" value="${escapeHtml(set.reps)}" inputmode="numeric" aria-label="Set ${index + 1} repetitions or seconds" aria-invalid="${Boolean(validation.errors.reps)}" placeholder="reps">
-              <input type="number" min="0" max="10" step="1" class="rir-field" data-field="rir" value="${escapeHtml(set.rir)}" inputmode="numeric" aria-label="Set ${index + 1} repetitions in reserve" aria-invalid="${Boolean(validation.errors.rir)}" placeholder="RIR">
-              <button type="button" class="set-check ${set.done ? "done" : ""}" data-action="set-done" aria-label="${set.done ? "Mark" : "Mark"} set ${index + 1} ${set.done ? "not complete" : "complete"}">${set.done ? "✓" : "○"}</button>
-              <small class="set-error" role="alert" ${errorText ? "" : "hidden"}>${escapeHtml(errorText)}</small>
-            </div>`;
-          })
-          .join("")}</div>
-      </article>
       <div class="actions">
         <button id="replaceToday" class="btn">Choose substitute for today</button>
         <button id="replaceRoutine" class="btn">Choose substitute for routine</button>
@@ -1925,7 +2018,6 @@ function renderSession({ focusHeading = false } = {}) {
         <button id="prevExercise" class="btn ghost" ${session.currentIndex === 0 ? "disabled" : ""}>Previous</button>
         <button id="nextExercise" class="btn primary">${session.currentIndex === session.exercises.length - 1 ? "Finish workout" : "Next exercise"}</button>
       </div>
-      <div id="restTimer"></div>
     </div>`;
 
   let showingAnimation = false;
@@ -1985,8 +2077,15 @@ function renderSession({ focusHeading = false } = {}) {
         if (!validation.valid) return;
       }
       set.done = !set.done;
+      if (set.done) {
+        const setIndex = Number(row.dataset.set);
+        const nextSet = item.setsLog[setIndex + 1];
+        if (nextSet && !nextSet.done && !String(nextSet.weight || "").trim() && String(set.weight || "").trim()) {
+          nextSet.weight = set.weight;
+        }
+      }
       persist();
-      if (set.done) startRest(item.restSeconds);
+      if (set.done && restTimerEnabled()) startRest(item.restSeconds);
       renderSession();
     };
   });
@@ -2413,47 +2512,138 @@ function openReplacementPicker({
   renderReplacementResults();
 }
 
-function startRest(seconds) {
+function currentRestRecommendation() {
+  const session = state.activeSession;
+  const item = session?.exercises?.[session.currentIndex];
+  return Math.max(0, Math.round(Number(item?.restSeconds ?? activeGoal().rest) || 0));
+}
+
+function stopRestInterval() {
   clearInterval(restInterval);
-  state.activeSession.restTimerEndsAt = restTimerEnd(seconds);
+  restInterval = null;
+}
+
+function ensureRestInterval() {
+  if (!restInterval && state.activeSession?.timer?.status === "active") {
+    restInterval = setInterval(tickRestTimer, 1000);
+  }
+}
+
+function saveSessionTimer(timer) {
+  if (!state.activeSession) return;
+  state.activeSession.timer = timer;
   persist();
-  restInterval = setInterval(tickRestTimer, 1000);
+}
+
+function startRest(recommendedSeconds, durationSeconds = preferredRestSeconds(recommendedSeconds)) {
+  if (!state.activeSession || !restTimerEnabled()) return;
+  stopRestInterval();
+  saveSessionTimer(createRestTimer(durationSeconds, { recommendedRestSeconds: recommendedSeconds }));
+  ensureRestInterval();
   renderRest();
 }
 
-function clearRestTimer({ notify = false } = {}) {
-  clearInterval(restInterval);
-  restInterval = null;
-  if (state.activeSession?.restTimerEndsAt) {
-    state.activeSession.restTimerEndsAt = null;
-    persist();
-  }
+function clearRestTimer() {
+  stopRestInterval();
+  if (state.activeSession?.timer) saveSessionTimer(cancelRestTimer(state.activeSession.timer));
   renderRest();
-  if (notify) toast("Rest complete");
+}
+
+function announceRestComplete() {
+  if (!restTimerEnabled()) return;
+  toast("Rest complete");
+  if (!document.hidden) navigator.vibrate?.([120, 80, 120]);
+}
+
+function reconcileRestState({ notify = false, render = true } = {}) {
+  const timer = state.activeSession?.timer;
+  if (!timer) {
+    stopRestInterval();
+    if (render) renderRest();
+    return;
+  }
+  const previousStatus = timer.status;
+  const reconciled = reconcileRestTimer(timer);
+  if (reconciled !== timer) saveSessionTimer(reconciled);
+  if (reconciled?.status === "active") ensureRestInterval();
+  else stopRestInterval();
+  if (notify && previousStatus === "active" && reconciled?.status === "completed") announceRestComplete();
+  if (render) renderRest();
 }
 
 function tickRestTimer() {
-  const remaining = restSecondsRemaining(state.activeSession?.restTimerEndsAt);
-  if (remaining <= 0) {
-    clearRestTimer({ notify: true });
-    return;
-  }
-  renderRest();
+  reconcileRestState({ notify: true });
 }
 
 function renderRest() {
   const element = $("#restTimer");
-  const restRemaining = restSecondsRemaining(state.activeSession?.restTimerEndsAt);
-  if (!element || restRemaining <= 0) {
-    if (element) element.innerHTML = "";
-    if (restRemaining <= 0 && state.activeSession?.restTimerEndsAt) {
-      state.activeSession.restTimerEndsAt = null;
-      persist();
-    }
+  if (!element) return;
+  if (!restTimerEnabled()) {
+    stopRestInterval();
+    element.innerHTML = "";
     return;
   }
-  if (!restInterval) restInterval = setInterval(tickRestTimer, 1000);
-  element.innerHTML = `<div class="rest-timer" role="timer" aria-label="Rest time remaining"><strong>Rest ${Math.floor(restRemaining / 60)}:${String(restRemaining % 60).padStart(2, "0")}</strong><button id="skipRest" type="button" class="btn small">Skip rest</button></div>`;
+
+  const recommended = currentRestRecommendation();
+  let timer = state.activeSession?.timer || null;
+  if (timer?.status === "active") {
+    const reconciled = reconcileRestTimer(timer);
+    if (reconciled !== timer) { timer = reconciled; saveSessionTimer(timer); }
+  }
+
+  const preferred = preferredRestSeconds(recommended);
+  if (!timer || ["completed", "cancelled"].includes(timer.status)) {
+    stopRestInterval();
+    const completed = timer?.status === "completed";
+    element.innerHTML = `<div class="rest-timer rest-ready" role="status">
+      <div><strong>${completed ? "Rest complete" : "Rest timer ready"}</strong><small>Programme target ${recommended}s${state.preferences?.defaultRestSeconds ? ` · preferred ${preferred}s` : ""}</small></div>
+      <div class="rest-controls">
+        <label class="rest-compact-field">Timer <input id="restReadyDuration" type="number" min="15" max="600" step="5" inputmode="numeric" list="activeRestDurationChoices" value="${preferred}"> sec</label>
+        <datalist id="activeRestDurationChoices"><option value="30"><option value="40"><option value="45"><option value="60"><option value="75"><option value="90"><option value="120"><option value="150"></datalist>
+        <button id="startRestNow" type="button" class="btn small">Start</button>
+      </div>
+    </div>`;
+    $("#startRestNow").onclick = () => startRest(recommended, clampRestPreference($("#restReadyDuration").value) || preferred);
+    return;
+  }
+
+  const remaining = restTimerRemaining(timer);
+  const duration = Number(timer.durationSeconds) || preferred;
+  if (timer.status === "active") ensureRestInterval();
+  else stopRestInterval();
+  element.innerHTML = `<div class="rest-timer" role="timer" aria-label="Rest time remaining">
+    <div class="rest-readout"><strong>Rest ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}</strong><small>${timer.status === "paused" ? "Paused" : "Running"} · programme ${timer.recommendedRestSeconds || recommended}s</small></div>
+    <label class="rest-compact-field">Timer <input id="restDurationDuringWorkout" type="number" min="15" max="600" step="5" inputmode="numeric" value="${duration}"> sec</label>
+    <div class="rest-controls">
+      <button id="restMinus15" type="button" class="btn small ghost">−15</button>
+      <button id="toggleRestPause" type="button" class="btn small">${timer.status === "paused" ? "Resume" : "Pause"}</button>
+      <button id="restPlus15" type="button" class="btn small ghost">+15</button>
+      <button id="resetRest" type="button" class="btn small ghost">Reset</button>
+      <button id="skipRest" type="button" class="btn small ghost">Skip</button>
+    </div>
+  </div>`;
+
+  $("#restMinus15").onclick = () => { saveSessionTimer(adjustRestTimer(state.activeSession.timer, -15)); renderRest(); };
+  $("#restPlus15").onclick = () => { saveSessionTimer(adjustRestTimer(state.activeSession.timer, 15)); renderRest(); };
+  $("#toggleRestPause").onclick = () => {
+    const current = state.activeSession.timer;
+    saveSessionTimer(current.status === "paused" ? resumeRestTimer(current) : pauseRestTimer(current));
+    if (state.activeSession.timer.status === "active") ensureRestInterval();
+    else stopRestInterval();
+    renderRest();
+  };
+  $("#resetRest").onclick = () => {
+    const seconds = clampRestPreference($("#restDurationDuringWorkout").value) || duration;
+    saveSessionTimer(resetRestTimer(state.activeSession.timer, seconds));
+    ensureRestInterval();
+    renderRest();
+  };
+  $("#restDurationDuringWorkout").onchange = (event) => {
+    const seconds = clampRestPreference(event.target.value) || duration;
+    saveSessionTimer(resetRestTimer(state.activeSession.timer, seconds));
+    ensureRestInterval();
+    renderRest();
+  };
   $("#skipRest").onclick = () => clearRestTimer();
 }
 
@@ -2480,9 +2670,9 @@ function finishSession() {
 
   session.completedAt = new Date().toISOString();
   session.status = completion.status;
-  clearInterval(restInterval);
-  restInterval = null;
-  session.restTimerEndsAt = null;
+  stopRestInterval();
+  session.timer = null;
+  void releaseWakeLock();
   state.history.push(session);
   state.activeSession = null;
 
@@ -3014,6 +3204,21 @@ function renderProfile() {
           <small>The app interface remains English. Instructions use this language when the source provides it, otherwise English.</small>
         </label>
       </div>
+      <div class="timer-profile-controls">
+        <label class="option">
+          <input id="profileUseRestTimer" type="checkbox" ${preferences.useRestTimer !== false ? "checked" : ""}>
+          <span><strong>Use rest timer</strong><small>Off means completing a set never starts a timer.</small></span>
+        </label>
+        <label class="field" for="profileDefaultRestSeconds">Default rest override
+          <input id="profileDefaultRestSeconds" type="number" min="15" max="600" step="5" inputmode="numeric" list="profileRestDurationChoices" value="${preferences.defaultRestSeconds ?? ""}" placeholder="Programme target">
+          <small>Blank uses each programme target. Your override never changes the programme prescription.</small>
+          <datalist id="profileRestDurationChoices"><option value="30"><option value="40"><option value="45"><option value="60"><option value="75"><option value="90"><option value="120"><option value="150"></datalist>
+        </label>
+        <label class="option">
+          <input id="profileKeepScreenAwake" type="checkbox" ${preferences.keepScreenAwake ? "checked" : ""}>
+          <span><strong>Keep screen awake during workout</strong><small>Best-effort Screen Wake Lock on supported browsers.</small></span>
+        </label>
+      </div>
     </div>
     <div class="card">
       <h2>Where your data is saved</h2>
@@ -3061,6 +3266,27 @@ function renderProfile() {
     persist();
     renderAll();
     toast(`Exercise instructions set to ${INSTRUCTION_LANGUAGES[state.preferences.language]}.`);
+  };
+  $("#profileUseRestTimer").onchange = (event) => {
+    state.preferences.useRestTimer = event.target.checked;
+    if (!event.target.checked && state.activeSession?.timer) {
+      state.activeSession.timer = cancelRestTimer(state.activeSession.timer);
+      stopRestInterval();
+    }
+    persist();
+    toast(event.target.checked ? "Rest timer enabled." : "Rest timer disabled. Set logging remains unchanged.");
+  };
+  $("#profileDefaultRestSeconds").onchange = (event) => {
+    state.preferences.defaultRestSeconds = clampRestPreference(event.target.value);
+    event.target.value = state.preferences.defaultRestSeconds ?? "";
+    persist();
+    toast(state.preferences.defaultRestSeconds ? `Default rest timer set to ${state.preferences.defaultRestSeconds} seconds.` : "Using programme rest targets.");
+  };
+  $("#profileKeepScreenAwake").onchange = (event) => {
+    state.preferences.keepScreenAwake = event.target.checked;
+    persist();
+    void syncWakeLock(false);
+    toast(event.target.checked ? "Screen wake lock will be requested during workouts when supported." : "Screen wake lock disabled.");
   };
   $("#exportData").onclick = async () => {
     try {
@@ -3154,6 +3380,7 @@ function routeInitial() {
     renderOnboarding();
     view("onboardingView");
   } else if (state.activeSession) {
+    reconcileRestState({ notify: false, render: false });
     renderAll();
     renderSession({ focusHeading: true });
     view("sessionView");
@@ -3212,6 +3439,16 @@ async function init() {
   installMediaFallback();
   window.addEventListener("online", updateDatasetBadge);
   window.addEventListener("offline", updateDatasetBadge);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      void releaseWakeLock();
+      return;
+    }
+    reconcileRestState({ notify: true });
+    void syncWakeLock($("#sessionView")?.classList.contains("active"));
+  });
+  window.addEventListener("focus", () => reconcileRestState({ notify: true }));
+  window.addEventListener("pageshow", () => reconcileRestState({ notify: true }));
   await registerServiceWorker();
   try {
     exercises = await loadExercises();
