@@ -65,7 +65,7 @@ function stopOtherMovementPreviews(activeCard) {
   });
 }
 
-function showPreviewError(card, button) {
+function showPreviewError(card, button, messageText = "Movement preview could not load. Written instructions are still available.") {
   card.classList.add("movement-preview-error");
   button.textContent = "Retry movement preview";
   button.disabled = false;
@@ -76,7 +76,7 @@ function showPreviewError(card, button) {
     message.className = "movement-preview-error-message";
     button.insertAdjacentElement("afterend", message);
   }
-  message.textContent = "Movement preview could not load. Written instructions are still available.";
+  message.textContent = messageText;
 }
 
 async function toggleMovementPreview(button) {
@@ -102,7 +102,7 @@ async function toggleMovementPreview(button) {
     const exercise = (await getExerciseMap()).get(exerciseId);
     if (!card.isConnected) return;
     if (!exercise?.gif_url) {
-      showPreviewError(card, button);
+      showPreviewError(card, button, "Movement preview is unavailable for this exercise. Written instructions are still available.");
       return;
     }
 
@@ -128,7 +128,6 @@ function enhanceReplacementScope(dialogContent) {
   const resolved = replacementScopeLabel(paragraph.textContent);
   scope.dataset.scope = resolved.key;
   heading.textContent = resolved.label;
-  scope.setAttribute("aria-label", `${resolved.label}. ${paragraph.textContent.trim()}`);
 }
 
 function enhanceReplacementCards(dialogContent) {
@@ -161,7 +160,10 @@ function enhanceReplacementDialog() {
 
   const replacementActive = Boolean(dialogContent.querySelector(".replacement-list"));
   dialog.classList.toggle("replacement-dialog-active", replacementActive);
-  if (!replacementActive) return;
+  if (!replacementActive) {
+    dialog.setAttribute("aria-label", "Exercise details and choices");
+    return;
+  }
 
   dialog.setAttribute("aria-label", "Choose an exercise substitute");
   enhanceReplacementScope(dialogContent);
@@ -169,7 +171,9 @@ function enhanceReplacementDialog() {
 }
 
 function enhanceRestTimer() {
+  const sessionView = document.getElementById("sessionView");
   const dock = document.querySelector("#restTimer .rest-timer");
+  sessionView?.classList.toggle("rest-dock-visible", Boolean(dock));
   if (!dock) return;
 
   const state = restTimerState(dock.textContent);
