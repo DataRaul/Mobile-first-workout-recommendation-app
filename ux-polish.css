@@ -1,5 +1,9 @@
 /* User-tested workout UX polish: rest-timer visibility and substitution previews. */
 
+#sessionView.rest-dock-visible .exercise-stage {
+  padding-bottom: 190px;
+}
+
 #restTimer .rest-timer {
   border-width: 2px;
   border-color: var(--accent);
@@ -161,6 +165,10 @@
 }
 
 @media (max-width: 700px) {
+  #sessionView.rest-dock-visible .exercise-stage {
+    padding-bottom: 230px;
+  }
+
   #restTimer .rest-timer {
     width: calc(100% - 16px);
     bottom: max(8px, env(safe-area-inset-bottom));
