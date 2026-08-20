@@ -1,0 +1,253 @@
+/* User-tested workout UX polish: rest-timer visibility and substitution previews. */
+
+#restTimer .rest-timer {
+  border-width: 2px;
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.48);
+  opacity: 1;
+  backdrop-filter: none;
+}
+
+#restTimer .rest-timer[data-timer-state="paused"] {
+  border-color: var(--warning);
+}
+
+#restTimer .rest-timer[data-timer-state="ready"] {
+  border-color: var(--line);
+}
+
+#restTimer .rest-timer[data-timer-state="complete"] {
+  border-color: var(--accent);
+}
+
+#restTimer .rest-state-label {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-bottom: 3px;
+  padding: 3px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.67rem;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  line-height: 1.2;
+}
+
+#restTimer .rest-timer[data-timer-state="paused"] .rest-state-label {
+  color: var(--warning);
+}
+
+#restTimer .rest-readout strong {
+  color: var(--text);
+  font-size: clamp(1.55rem, 7vw, 2.15rem);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.015em;
+  line-height: 1;
+}
+
+#restTimer .rest-timer small {
+  color: #c9d1df;
+}
+
+#restTimer .rest-compact-field {
+  color: #dce2ec;
+  font-weight: 750;
+}
+
+#restTimer .rest-compact-field input {
+  border-color: #4a566d;
+  background: #0f131c;
+  color: var(--text);
+}
+
+#restTimer .btn.ghost {
+  border-color: #465169;
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+#restTimer #toggleRestPause,
+#restTimer #startRestNow {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #07120c;
+}
+
+#restTimer #skipRest {
+  border-color: #59657d;
+}
+
+#exerciseDialog.replacement-dialog-active {
+  width: min(760px, calc(100% - 24px));
+  border-color: rgba(142, 227, 178, 0.48);
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.58);
+}
+
+#exerciseDialog.replacement-dialog-active::backdrop {
+  background: rgba(0, 0, 0, 0.84);
+}
+
+#exerciseDialog.replacement-dialog-active .dialog-close {
+  z-index: 3;
+  border: 1px solid var(--line);
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+#exerciseDialog.replacement-dialog-active .replacement-scope {
+  border: 2px solid var(--accent);
+  background: var(--surface-3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+#exerciseDialog.replacement-dialog-active .replacement-scope strong {
+  display: block;
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+#exerciseDialog.replacement-dialog-active .replacement-scope p {
+  margin: 6px 0 0;
+  color: var(--text);
+}
+
+#exerciseDialog.replacement-dialog-active .replacement-option {
+  border-color: #3b455a;
+  background: #1b2130;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+#exerciseDialog.replacement-dialog-active .replacement-option:hover,
+#exerciseDialog.replacement-dialog-active .replacement-option:focus-within {
+  border-color: rgba(142, 227, 178, 0.62);
+}
+
+#exerciseDialog.replacement-dialog-active .replacement-option.movement-previewing {
+  border-color: var(--accent);
+  background: #202839;
+}
+
+#exerciseDialog.replacement-dialog-active .replacement-option img {
+  transition: width 0.2s ease, height 0.2s ease, border-radius 0.2s ease;
+}
+
+#exerciseDialog.replacement-dialog-active .movement-preview-toggle {
+  margin-top: 10px;
+  border-color: #536078;
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+#exerciseDialog.replacement-dialog-active .movement-preview-toggle[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#exerciseDialog.replacement-dialog-active .movement-preview-error-message {
+  margin-top: 7px;
+  color: var(--warning);
+  line-height: 1.35;
+}
+
+#exerciseDialog.replacement-dialog-active .choose-replacement {
+  min-height: 44px;
+}
+
+@media (max-width: 700px) {
+  #restTimer .rest-timer {
+    width: calc(100% - 16px);
+    bottom: max(8px, env(safe-area-inset-bottom));
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  #restTimer .rest-timer[role="timer"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
+    align-items: end;
+  }
+
+  #restTimer .rest-readout {
+    min-width: 0;
+  }
+
+  #restTimer .rest-compact-field {
+    align-self: end;
+  }
+
+  #restTimer .rest-controls {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+
+  #restTimer .rest-controls > * {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  #restTimer .rest-ready {
+    gap: 10px;
+  }
+
+  #exerciseDialog.replacement-dialog-active[open] {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: none;
+    height: 94dvh;
+    max-height: 94dvh;
+    margin: 0;
+    padding: 14px 14px calc(18px + env(safe-area-inset-bottom));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 22px 22px 0 0;
+  }
+
+  #exerciseDialog.replacement-dialog-active .dialog-close {
+    top: 0;
+  }
+
+  #exerciseDialog.replacement-dialog-active .replacement-scope {
+    margin-top: 10px;
+  }
+
+  #exerciseDialog.replacement-dialog-active .replacement-option.movement-previewing {
+    grid-template-columns: 1fr;
+  }
+
+  #exerciseDialog.replacement-dialog-active .replacement-option.movement-previewing > img {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: min(54vw, 230px);
+    border-radius: 14px;
+  }
+
+  #exerciseDialog.replacement-dialog-active .replacement-option.movement-previewing > div,
+  #exerciseDialog.replacement-dialog-active .replacement-option.movement-previewing .choose-replacement {
+    grid-column: 1 / -1;
+  }
+
+  #exerciseDialog.replacement-dialog-active .replacement-option.movement-previewing .choose-replacement {
+    width: 100%;
+    justify-self: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #exerciseDialog.replacement-dialog-active .replacement-option,
+  #exerciseDialog.replacement-dialog-active .replacement-option img {
+    transition: none;
+  }
+}
