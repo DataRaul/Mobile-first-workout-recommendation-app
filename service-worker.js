@@ -1,10 +1,10 @@
-const CACHE = "workout-recommender-v3.9.0-timer-ux-20260818";
+const CACHE = "workout-recommender-v3.9.1-ux-polish-20260821";
 
 const APP = [
-  "./", "./index.html", "./styles.css", "./accessibility.css", "./customization.css", "./manifest.webmanifest",
+  "./", "./index.html", "./styles.css", "./accessibility.css", "./customization.css", "./ux-polish.css", "./manifest.webmanifest",
   "./src/config.js", "./src/storage.js", "./src/dataset.js", "./src/enrichment-rules.js", "./src/programme.js",
   "./src/progress.js", "./src/schedule.js", "./src/session.js", "./src/app.js", "./src/accessibility.js",
-  "./src/customization.js", "./src/customization-ui.js", "./src/customization-copy.js",
+  "./src/customization.js", "./src/customization-ui.js", "./src/customization-copy.js", "./src/ux-polish.js",
   "./data/exercise-enrichment.json", "./data/exercise-overrides.json", "./data/programming-targets.json", "./data/enrichment-metadata.json",
 ];
 
