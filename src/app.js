@@ -2215,7 +2215,8 @@ function replacementContext({ scope, workoutId, itemIndex }) {
   if (scope === "session") {
     const session = state.activeSession;
     if (!session) return null;
-    const item = session.exercises[session.currentIndex];
+    const sessionItemIndex = session.currentIndex;
+    const item = session.exercises[sessionItemIndex];
     const workout = state.activeProgram?.workouts.find((entry) => entry.id === session.workoutId);
     return {
       item,
