@@ -27,7 +27,7 @@ export const GOALS = {
   general: {
     label: "General fitness", sets: 3, reps: "8–15", rest: 75,
     summary: "Develop balanced strength, movement quality and consistency.", weeks: 12,
-    guidance: { outcome: "Balanced fitness", chooseWhen: "Choose this when you want a balanced routine or are not sure which specialised goal fits yet.", prescription: "Exercises generally use 8–15 repetitions with moderate rest and balanced movement coverage.", repLabel: "8–15 reps by role", restLabel: "75 sec rest", recommended: true },
+    guidance: { outcome: "Balanced fitness", chooseWhen: "Choose this when you want a balanced routine or are not sure which specialised goal fits yet.", prescription: "Exercises generally use 8–15 repetitions with moderate rest and balanced movement coverage.", repLabel: "8–15 reps", restLabel: "75 sec rest", recommended: true },
   },
   conditioning: {
     label: "Conditioning", sets: 3, reps: "30–45 sec", rest: 30,
