@@ -105,9 +105,14 @@ try {
   const favoriteId = await firstFavorite.getAttribute("data-favorite-id");
   await firstFavorite.click();
   await waitForState(page, "(state, arg) => state.profile.favorites.some((id) => String(id) === String(arg))", favoriteId);
-  await page.locator("#favoritesFilter").setChecked(true);
+  const favoritesFilter = page.locator("#favoritesFilter");
+  const favoritesFilterLabel = page.locator("#favoritesFilterLabel");
+  await favoritesFilterLabel.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  await favoritesFilterLabel.click();
+  assert.equal(await favoritesFilter.isChecked(), true, "favorites-only filter can be toggled through its visible label");
   await page.locator(`.favorite-exercise[data-favorite-id='${favoriteId}']`).waitFor();
-  await page.locator("#favoritesFilter").setChecked(false);
+  await favoritesFilterLabel.click();
+  assert.equal(await favoritesFilter.isChecked(), false, "favorites-only filter can be cleared through its visible label");
   await page.locator(".exercise-card-open").first().click();
   await page.waitForSelector("#exerciseDialog[open]");
   await page.click("#closeExerciseDialog");
