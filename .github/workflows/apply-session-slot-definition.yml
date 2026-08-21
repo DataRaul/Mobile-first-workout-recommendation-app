@@ -1,0 +1,57 @@
+name: Apply session slot definition
+
+on:
+  push:
+    branches:
+      - test/full-browser-user-flows
+    paths:
+      - .github/workflows/apply-session-slot-definition.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: test/full-browser-user-flows
+      - name: Define exact session slot
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/app.js')
+          text = path.read_text()
+          old = '''  if (scope === "session") {
+    const session = state.activeSession;
+    if (!session) return null;
+    const item = session.exercises[session.currentIndex];
+    const workout = state.activeProgram?.workouts.find((entry) => entry.id === session.workoutId);
+'''
+          new = '''  if (scope === "session") {
+    const session = state.activeSession;
+    if (!session) return null;
+    const sessionItemIndex = session.currentIndex;
+    const item = session.exercises[sessionItemIndex];
+    const workout = state.activeProgram?.workouts.find((entry) => entry.id === session.workoutId);
+'''
+          if old not in text:
+              if 'const sessionItemIndex = session.currentIndex;' in text:
+                  raise SystemExit(0)
+              raise SystemExit('Expected session replacement context block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit source correction
+        run: |
+          if git diff --quiet -- src/app.js; then
+            echo "Source correction already present."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- src/app.js
+          git diff --cached --check
+          git commit -m "Define permanent session substitution slot"
+          git push origin HEAD:test/full-browser-user-flows
