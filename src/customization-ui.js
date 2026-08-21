@@ -185,7 +185,11 @@ function openCustomDetail(id) {
   if (!dialog.open) dialog.showModal();
 }
 function enhanceBrowse() {
-  if (replacementMode) { renderReplacementCatalogue(); return; }
+  if (replacementMode) {
+    const view = $("#exercisesView");
+    if (!view?.querySelector(".exercise-replacement-context")) renderReplacementCatalogue();
+    return;
+  }
   const currentState = state();
   const view = $("#exercisesView");
   if (!view || !view.classList.contains("active") || enhancing) return;
