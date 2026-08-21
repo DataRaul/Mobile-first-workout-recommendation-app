@@ -2254,7 +2254,7 @@ function replacementContext({ scope, workoutId, itemIndex }) {
         item.painReportedAt = null;
 
         if (permanent) {
-          const template = workout?.exercises.find((entry) => entry.exerciseId === oldId);
+          const template = workout?.exercises?.[sessionItemIndex];
           if (template) {
             applyReplacementMetadata(
               template,
