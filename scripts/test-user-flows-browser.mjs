@@ -300,10 +300,14 @@ try {
   await page.click("#resetGym");
   await waitForState(page, "(state) => state.gym.unavailableExerciseIds.length === 0");
   const timerPreference = page.locator("#profileUseRestTimer");
+  const timerPreferenceLabel = page.locator("label.option:has(#profileUseRestTimer) span");
   const timerPreferenceBefore = await timerPreference.isChecked();
-  await timerPreference.setChecked(!timerPreferenceBefore);
+  await timerPreferenceLabel.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  await timerPreferenceLabel.click();
+  assert.equal(await timerPreference.isChecked(), !timerPreferenceBefore, "rest-timer preference toggles through its visible label");
   await waitForState(page, "(state, arg) => state.preferences.useRestTimer === arg", !timerPreferenceBefore);
-  await timerPreference.setChecked(timerPreferenceBefore);
+  await timerPreferenceLabel.click();
+  assert.equal(await timerPreference.isChecked(), timerPreferenceBefore, "rest-timer preference can be restored through its visible label");
   await waitForState(page, "(state, arg) => state.preferences.useRestTimer === arg", timerPreferenceBefore);
 
   await page.click("#bottomNav button[data-view='todayView']");
