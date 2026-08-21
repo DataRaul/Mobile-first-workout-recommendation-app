@@ -95,12 +95,31 @@ try {
   assert.equal(current.draftProgram, null, "accepting clears the draft");
   assert.equal(await page.locator("#bottomNav").evaluate((node) => node.hidden), false, "main navigation is visible after acceptance");
 
+  await page.click("#bottomNav button[data-view='exercisesView']");
+  await page.waitForSelector("#exercisesView.active");
+  await page.fill("#exerciseSearch", "no-such-exercise-browser-regression");
+  await page.waitForFunction(() => document.querySelector("#browserCount")?.textContent?.includes("0 matching exercises"));
+  await page.fill("#exerciseSearch", "");
+  const firstFavorite = page.locator(".favorite-exercise").first();
+  await firstFavorite.waitFor();
+  const favoriteId = await firstFavorite.getAttribute("data-favorite-id");
+  await firstFavorite.click();
+  await waitForState(page, "(state, arg) => state.profile.favorites.some((id) => String(id) === String(arg))", favoriteId);
+  await page.locator("#favoritesFilter").setChecked(true);
+  await page.locator(`.favorite-exercise[data-favorite-id='${favoriteId}']`).waitFor();
+  await page.locator("#favoritesFilter").setChecked(false);
+  await page.locator(".exercise-card-open").first().click();
+  await page.waitForSelector("#exerciseDialog[open]");
+  await page.click("#closeExerciseDialog");
+  await page.waitForFunction(() => !document.querySelector("#exerciseDialog")?.open);
+
   await page.click("#bottomNav button[data-view='routineView']");
   await page.waitForSelector("#routineView.active");
   const routineReplace = page.locator(".substitute-exercise[data-scope='routine']").first();
   await routineReplace.waitFor();
   const routineWorkoutId = await routineReplace.getAttribute("data-workout-id");
   const routineIndex = Number(await routineReplace.getAttribute("data-index"));
+  current = await stateFromPage(page);
   const originalRoutineId = current.activeProgram.workouts.find((workout) => workout.id === routineWorkoutId).exercises[routineIndex].exerciseId;
 
   await routineReplace.click();
@@ -116,11 +135,11 @@ try {
     candidateId: routineCandidateId,
   });
 
-  await page.waitForTimeout(700);
+  await page.reload({ waitUntil: "domcontentloaded" });
   await waitForDataset(page);
   await page.waitForSelector("#todayView.active");
   current = await stateFromPage(page);
-  assert.equal(String(current.activeProgram.workouts.find((workout) => workout.id === routineWorkoutId).exercises[routineIndex].exerciseId), String(routineCandidateId), "routine replacement survives reload");
+  assert.equal(String(current.activeProgram.workouts.find((workout) => workout.id === routineWorkoutId).exercises[routineIndex].exerciseId), String(routineCandidateId), "routine replacement survives a full application reload");
 
   await page.click("#startSession");
   await page.waitForSelector("#sessionView.active");
@@ -131,6 +150,14 @@ try {
   const expectedTemplateId = current.activeProgram.workouts.find((workout) => workout.id === sessionWorkoutId).exercises[startingSessionIndex].exerciseId;
   assert.equal(String(current.activeSession.exercises[startingSessionIndex].exerciseId), String(expectedTemplateId), "session starts from the accepted routine template");
 
+  await page.click("#exitSession");
+  await page.waitForSelector("#todayView.active");
+  current = await stateFromPage(page);
+  assert.ok(current.activeSession, "exiting a workout preserves the active session");
+  assert.match(await page.locator("#startSession").textContent(), /Resume workout/i, "Today exposes resume after exiting an active workout");
+  await page.click("#startSession");
+  await page.waitForSelector("#sessionView.active");
+
   await page.click("#startRestNow");
   await waitForState(page, "(state) => state.activeSession.timer?.status === 'active'");
   const initialTimer = (await stateFromPage(page)).activeSession.timer;
@@ -140,6 +167,13 @@ try {
   await page.click("#restPlus15");
   const pausedAfterAdd = (await stateFromPage(page)).activeSession.timer.pausedRemainingSeconds;
   assert.ok(pausedAfterAdd >= pausedBeforeAdd + 14, "timer +15 control updates paused time");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForDataset(page);
+  await page.waitForSelector("#sessionView.active");
+  current = await stateFromPage(page);
+  assert.equal(current.activeSession.timer?.status, "paused", "paused rest timer survives reload without resetting");
+  assert.ok(current.activeSession.timer.pausedRemainingSeconds >= pausedAfterAdd - 1, "paused timer retains its adjusted remaining time across reload");
   await page.click("#toggleRestPause");
   await waitForState(page, "(state) => state.activeSession.timer?.status === 'active'");
   await page.click("#skipRest");
@@ -189,6 +223,18 @@ try {
   current = await stateFromPage(page);
   assert.equal(String(current.activeProgram.workouts.find((workout) => workout.id === sessionWorkoutId).exercises[startingSessionIndex].exerciseId), String(permanentCandidateId), "routine substitution from an already modified session updates the exact future routine slot");
 
+  const unavailableOldId = current.activeSession.exercises[startingSessionIndex].exerciseId;
+  await page.click("#machineUnavailable");
+  await page.waitForSelector("#exerciseDialog[open]");
+  const unavailableChoice = page.locator("#exerciseDialog .choose-replacement").first();
+  await unavailableChoice.waitFor();
+  const unavailableCandidateId = await unavailableChoice.getAttribute("data-id");
+  assert.notEqual(String(unavailableCandidateId), String(unavailableOldId), "unavailable-machine replacement differs from the unavailable exercise");
+  await unavailableChoice.click();
+  await waitForState(page, "(state, arg) => state.gym.unavailableExerciseIds.some((id) => String(id) === String(arg))", unavailableOldId);
+  current = await stateFromPage(page);
+  assert.equal(String(current.activeProgram.workouts.find((workout) => workout.id === sessionWorkoutId).exercises[startingSessionIndex].exerciseId), String(unavailableCandidateId), "marking an exercise unavailable updates the same future routine slot");
+
   while ((current = await stateFromPage(page)).activeSession) {
     const session = current.activeSession;
     const item = session.exercises[session.currentIndex];
@@ -220,12 +266,23 @@ try {
   assert.equal(current.activeSession, null, "completed workout clears the active session");
   assert.equal(current.activeProgram.completedSessions, 1, "completed workout advances the programme once");
 
+  await page.locator(".history-session").first().locator("summary").click();
+  await page.locator(".correct-history").first().click();
+  await page.waitForSelector("#exerciseDialog[open]");
+  const firstCorrectedReps = page.locator("#historyCorrectionForm input[data-field='reps']").first();
+  await firstCorrectedReps.fill("9");
+  await page.click("#historyCorrectionForm button[type='submit']");
+  await waitForState(page, "(state) => state.history[0].exercises[0].setsLog.find((set) => set.done)?.reps === '9'");
+  current = await stateFromPage(page);
+  assert.ok(current.history[0].editedAt, "history correction records an edit timestamp");
+
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForDataset(page);
   await page.waitForSelector("#todayView.active");
   current = await stateFromPage(page);
   assert.equal(current.history.length, 1, "history survives a full application reload");
   assert.equal(current.activeProgram.completedSessions, 1, "programme progress survives reload");
+  assert.equal(current.history[0].exercises[0].setsLog.find((set) => set.done)?.reps, "9", "corrected history values survive reload");
 
   await page.click("#bottomNav button[data-view='progressView']");
   await page.waitForSelector("#progressView.active");
@@ -233,12 +290,38 @@ try {
 
   await page.click("#bottomNav button[data-view='profileView']");
   await page.waitForSelector("#profileView.active");
+  assert.ok((await stateFromPage(page)).gym.unavailableExerciseIds.length >= 1, "gym-learning state retains unavailable exercise choices");
+  assert.equal(await page.locator("#resetGym").isDisabled(), false, "gym-learning reset is available when unavailable items exist");
+  await page.click("#resetGym");
+  await waitForState(page, "(state) => state.gym.unavailableExerciseIds.length === 0");
   const timerPreference = page.locator("#profileUseRestTimer");
   const timerPreferenceBefore = await timerPreference.isChecked();
   await timerPreference.setChecked(!timerPreferenceBefore);
   await waitForState(page, "(state, arg) => state.preferences.useRestTimer === arg", !timerPreferenceBefore);
   await timerPreference.setChecked(timerPreferenceBefore);
   await waitForState(page, "(state, arg) => state.preferences.useRestTimer === arg", timerPreferenceBefore);
+
+  await page.click("#bottomNav button[data-view='todayView']");
+  await page.waitForSelector("#todayView.active");
+  current = await stateFromPage(page);
+  const completedBeforePartial = current.activeProgram.completedSessions;
+  const nextWorkoutIndexBeforePartial = current.activeProgram.nextWorkoutIndex;
+  await page.click("#startSession");
+  await page.waitForSelector("#sessionView.active");
+  while (true) {
+    const partialState = await stateFromPage(page);
+    const isLast = partialState.activeSession.currentIndex === partialState.activeSession.exercises.length - 1;
+    await page.click("#nextExercise");
+    if (isLast) break;
+    await waitForState(page, "(state, arg) => state.activeSession?.currentIndex === arg", partialState.activeSession.currentIndex + 1);
+  }
+  await waitForState(page, "(state) => state.activeSession === null");
+  await page.waitForSelector("#progressView.active");
+  current = await stateFromPage(page);
+  assert.equal(current.history.length, 2, "partial workout is retained as a distinct history record");
+  assert.equal(current.history[1].status, "partial", "unfinished workout is explicitly stored as partial");
+  assert.equal(current.activeProgram.completedSessions, completedBeforePartial, "partial workout does not advance completed-session count");
+  assert.equal(current.activeProgram.nextWorkoutIndex, nextWorkoutIndexBeforePartial, "partial workout does not advance the routine position");
 
   assert.deepEqual(pageErrors, [], `real app user-flow run must not raise browser errors: ${pageErrors.join(" | ")}`);
   await context.close();
@@ -247,4 +330,4 @@ try {
   await new Promise((resolve) => server.close(resolve));
 }
 
-console.log("Full Chromium user-flow regression passed: onboarding, programme, routine, workout, timer, substitutions, completion, progress and persistence all work end-to-end.");
+console.log("Full Chromium user-flow regression passed: onboarding, programme, exercise library, routine persistence, workout resume, timer persistence, substitutions, gym learning, completion, history correction, partial-session handling and profile preferences all work end-to-end.");
