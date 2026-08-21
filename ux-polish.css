@@ -14,6 +14,18 @@
   backdrop-filter: none;
 }
 
+/* A ready/completed timer is an inline control, not an active overlay. Keeping
+   status-state controls in normal flow prevents the dock from covering workout
+   actions such as substitution buttons on narrow screens. */
+#restTimer .rest-timer[role="status"] {
+  position: static;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+  width: 100%;
+  transform: none;
+}
+
 #restTimer .rest-timer[data-timer-state="paused"] {
   border-color: var(--warning);
 }
@@ -174,6 +186,11 @@
     bottom: max(8px, env(safe-area-inset-bottom));
     padding: 12px;
     border-radius: 16px;
+  }
+
+  #restTimer .rest-timer[role="status"] {
+    width: 100%;
+    bottom: auto;
   }
 
   #restTimer .rest-timer[role="timer"] {
