@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -28,3 +28,9 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/data/exercises.json -o /tmp/exercises.json
           printf '%s  %s\n' '656634224b8977b99a6d765470ee123260d4979715eaa4e7c0b7c8bb0d79f93d' '/tmp/exercises.json' | sha256sum -c -
           npm run test:matrix -- --source /tmp/exercises.json
+      - name: Install pinned browser smoke-test dependency
+        run: npm install --no-audit --no-fund
+      - name: Install Chromium for interaction smoke
+        run: npx playwright install --with-deps chromium
+      - name: Run real-browser interaction smoke
+        run: npm run test:browser
