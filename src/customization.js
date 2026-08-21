@@ -1,4 +1,5 @@
 import { maxComplexity, replacementOptions } from "./programme.js";
+import { allowsStageComplexity } from "./recommendation-priors.js";
 
 export function routineSlotOptions(program) {
   if (!program) return [];
@@ -55,7 +56,7 @@ export function applyRoutineSlotReplacement({ program, slot, candidate, profile,
   if (!program || !slot?.item || !candidate || !profile || typeof applyMetadata !== "function") {
     return false;
   }
-  if (candidate.app?.complexity > maxComplexity(profile.level)) return false;
+  if (!allowsStageComplexity(candidate, profile, maxComplexity(profile.level))) return false;
   applyMetadata(
     slot.item,
     candidate.id,
