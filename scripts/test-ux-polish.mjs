@@ -45,10 +45,10 @@ assert.match(css, /#restTimer \.rest-readout strong \{[\s\S]*font-variant-numeri
 assert.match(css, /#exerciseDialog\.replacement-dialog-active\[open\][\s\S]*height: 94dvh;/);
 assert.match(css, /\.replacement-option\.movement-previewing > img[\s\S]*width: 100%;/);
 assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-assert.match(serviceWorker, /workout-recommender-v3\.9\.1-ux-polish-20260821/);
+assert.match(serviceWorker, /workout-recommender-v3\.9\.2-interaction-stability-20260821/);
 assert.match(serviceWorker, /"\.\/ux-polish\.css"/);
 assert.match(serviceWorker, /"\.\/src\/ux-polish\.js"/);
-assert.match(config, /APP_VERSION = "3\.9\.1"/);
-assert.equal(packageJson.version, "3.9.1");
+assert.match(config, /APP_VERSION = "3\.9\.2"/);
+assert.equal(packageJson.version, "3.9.2");
 
 console.log("User-tested timer and substitution UX polish regression passed.");

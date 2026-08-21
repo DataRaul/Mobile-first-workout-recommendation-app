@@ -1,15 +1,19 @@
 {
   "name": "mobile-first-workout-recommendation-app",
-  "version": "3.9.1",
+  "version": "3.9.2",
   "private": true,
   "type": "module",
   "description": "Mobile-first workout recommendation and tracking PWA.",
   "scripts": {
     "check": "node scripts/validate.mjs",
     "test": "node scripts/test-all.mjs",
+    "test:browser": "node scripts/test-browser-interactions.mjs",
     "test:matrix": "node scripts/test-recommendation-matrix.mjs",
     "validate": "npm run check && npm test",
     "enrichment:rerun": "node scripts/rerun-enrichment.mjs",
     "enrichment:check": "node scripts/rerun-enrichment.mjs --check"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
   }
 }
