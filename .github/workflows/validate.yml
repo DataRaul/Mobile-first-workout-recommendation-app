@@ -14,8 +14,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - name: Complete exact session-slot source fix on audit branch
-        if: github.event_name == 'pull_request' && github.head_ref == 'test/full-browser-user-flows'
+      - name: Complete exact session-slot source fix on child audit branch
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'fix/pr48-exact-slot')
         env:
           PR_HEAD: ${{ github.head_ref }}
         run: |
