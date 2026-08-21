@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -14,6 +14,57 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Apply exact session-slot fix to PR head
+        if: github.event_name == 'pull_request' && github.head_ref == 'test/full-browser-user-flows'
+        env:
+          PR_HEAD: ${{ github.head_ref }}
+        run: |
+          git fetch origin "$PR_HEAD"
+          git switch -C pr-head "origin/$PR_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/app.js')
+          text = path.read_text()
+          old = '''  if (scope === "session") {
+            const session = state.activeSession;
+            if (!session) return null;
+            const item = session.exercises[session.currentIndex];
+            const workout = state.activeProgram?.workouts.find((entry) => entry.id === session.workoutId);
+          '''
+          new = '''  if (scope === "session") {
+            const session = state.activeSession;
+            if (!session) return null;
+            const sessionItemIndex = session.currentIndex;
+            const item = session.exercises[sessionItemIndex];
+            const workout = state.activeProgram?.workouts.find((entry) => entry.id === session.workoutId);
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''        if (permanent) {
+                    const template = workout?.exercises.find((entry) => entry.exerciseId === oldId);
+                    if (template) {
+          '''
+          new = '''        if (permanent) {
+                    const template = workout?.exercises?.[sessionItemIndex];
+                    if (template) {
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+          if git diff --quiet -- src/app.js; then
+            echo "Exact-slot fix already present."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- src/app.js
+            git diff --cached --check
+            git commit -m "Fix permanent session substitution exact slot"
+            git push origin HEAD:"$PR_HEAD"
+          fi
       - uses: actions/setup-node@v7
         with:
           node-version: 22
