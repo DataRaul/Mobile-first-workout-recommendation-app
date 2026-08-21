@@ -15,4 +15,14 @@ const program={workouts:[{id:"day-1",name:"Upper A",exercises:[originalA,origina
 const candidate={id:"cable-press",app:{complexity:2,group:"chest"},_replacement:{requestedGroup:"chest",targetGroup:"chest",targetRole:"chest_horizontal_press",groupMatch:"exact",roleMatch:"exact"}};
 const changed=applyRoutineSlotReplacement({program,slot:slots[0],candidate,profile:{level:"intermediate"},applyMetadata(item,id,meta){item.exerciseId=id;item.requestedGroup=meta.requestedGroup;item.targetGroup=meta.targetGroup;item.targetRole=meta.targetRole;item.groupMatch=meta.groupMatch;item.roleMatch=meta.roleMatch;}});
 assert.equal(changed,true); assert.equal(program.workouts[0].exercises[0].exerciseId,"cable-press"); assert.equal(program.workouts[0].exercises[1].exerciseId,"row"); assert.equal(program.workouts[1].exercises[0].exerciseId,"press"); assert.equal(history,JSON.stringify([{workoutId:"day-1",exercises:[{exerciseId:"press"}]}])); assert.equal(replacementMatchLabel(candidate),"Best match"); assert.equal(replacementWarning(candidate),""); assert.match(replacementWarning({_replacement:{groupMatch:"companion",roleMatch:"group"}}),/direct muscle emphasis/);
-console.log("Exercise catalogue and exact-slot routine customization checks passed.");
+
+const starterProgram={workouts:[{id:"starter-day",name:"Starter A",exercises:[{...originalA}]}]};
+const starterSlot=routineSlotOptions(starterProgram)[0];
+const starterBridge={id:"barbell-bench",name:"Barbell bench press",equipment:"barbell",app:{complexity:2,group:"chest",mechanics:{loadability:"high",stability:"moderate"},programming:{defaultAvoid:false}},_replacement:{requestedGroup:"chest",targetGroup:"chest",targetRole:"chest_horizontal_press",groupMatch:"exact",roleMatch:"exact"}};
+const starterChanged=applyRoutineSlotReplacement({program:starterProgram,slot:starterSlot,candidate:starterBridge,profile:{level:"starter",trainingMonths:1},applyMetadata(item,id){item.exerciseId=id;}});
+assert.equal(starterChanged,true,"a stage-aware Starter bridge offered by replacementOptions must also be accepted by the final apply gate");
+assert.equal(starterProgram.workouts[0].exercises[0].exerciseId,"barbell-bench");
+const unsafeStarter={...starterBridge,id:"complex-novelty",name:"Unfamiliar complex novelty",app:{...starterBridge.app,mechanics:{loadability:"low",stability:"high"}}};
+assert.equal(applyRoutineSlotReplacement({program:starterProgram,slot:starterSlot,candidate:unsafeStarter,profile:{level:"starter",trainingMonths:1},applyMetadata(){throw new Error("ineligible candidate must not be applied");}}),false);
+
+console.log("Exercise catalogue, stage-aware apply gate and exact-slot routine customization checks passed.");
