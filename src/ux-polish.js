@@ -126,8 +126,8 @@ function enhanceReplacementScope(dialogContent) {
   if (!paragraph || !heading) return;
 
   const resolved = replacementScopeLabel(paragraph.textContent);
-  scope.dataset.scope = resolved.key;
-  heading.textContent = resolved.label;
+  if (scope.dataset.scope !== resolved.key) scope.dataset.scope = resolved.key;
+  if (heading.textContent !== resolved.label) heading.textContent = resolved.label;
 }
 
 function enhanceReplacementCards(dialogContent) {
@@ -173,10 +173,13 @@ function enhanceReplacementDialog() {
 function enhanceRestTimer() {
   const sessionView = document.getElementById("sessionView");
   const dock = document.querySelector("#restTimer .rest-timer");
-  sessionView?.classList.toggle("rest-dock-visible", Boolean(dock));
-  if (!dock) return;
+  if (!dock) {
+    sessionView?.classList.remove("rest-dock-visible");
+    return;
+  }
 
   const state = restTimerState(dock.textContent);
+  sessionView?.classList.toggle("rest-dock-visible", state === "running" || state === "paused");
   dock.dataset.timerState = state;
   const labelHost = dock.querySelector(".rest-readout") || dock.firstElementChild;
   if (!labelHost || labelHost.querySelector(".rest-state-label")) return;

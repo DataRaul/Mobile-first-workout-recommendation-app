@@ -7,7 +7,7 @@
   "scripts": {
     "check": "node scripts/validate.mjs",
     "test": "node scripts/test-all.mjs",
-    "test:browser": "node scripts/test-browser-interactions.mjs",
+    "test:browser": "node scripts/test-browser-interactions.mjs && node scripts/test-user-flows-browser.mjs",
     "test:matrix": "node scripts/test-recommendation-matrix.mjs",
     "validate": "npm run check && npm test",
     "enrichment:rerun": "node scripts/rerun-enrichment.mjs",

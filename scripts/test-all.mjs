@@ -5,8 +5,9 @@ const excluded = new Set([
   "test-all.mjs",
   // Requires an explicit path to the external 1,324-exercise source dataset.
   "test-recommendation-matrix.mjs",
-  // Requires an installed Playwright browser; CI runs it explicitly after setup.
+  // Require an installed Playwright browser; CI runs them explicitly after setup.
   "test-browser-interactions.mjs",
+  "test-user-flows-browser.mjs",
 ]);
 
 const tests = readdirSync(new URL(".", import.meta.url))
@@ -23,4 +24,4 @@ for (const test of tests) {
 
 console.log(`\nAll ${tests.length} self-contained regression files passed.`);
 console.log("The external-source recommendation matrix remains available through npm run test:matrix -- --source <path>.");
-console.log("The browser interaction smoke test remains available through npm run test:browser after Playwright browser setup.");
+console.log("The browser interaction and full user-flow suites remain available through npm run test:browser after Playwright browser setup.");
