@@ -1,4 +1,12 @@
 const KEY = "workout-recommender.state.v2";
+const BACKUP_FILE_NAME = "workout-recommender-backup.json";
+const BACKUP_PICKER_ID = "workout-recommender-backup";
+const BACKUP_FILE_TYPES = [
+  {
+    description: "Workout Recommender backup",
+    accept: { "application/json": [".json"] },
+  },
+];
 
 export const DEFAULT_STATE = {
   schemaVersion: 3,
@@ -191,25 +199,22 @@ export function saveState(state) {
 
 export async function exportState(state, { chooseLocation = false } = {}) {
   const content = JSON.stringify(state, null, 2);
-  const fileName = `workout-recommender-${new Date().toISOString().slice(0,10)}.json`;
+  const fileName = BACKUP_FILE_NAME;
 
-  if (chooseLocation && typeof window.showSaveFilePicker === "function") {
+  if (chooseLocation && typeof window !== "undefined" && typeof window.showSaveFilePicker === "function") {
     try {
       const handle = await window.showSaveFilePicker({
+        id: BACKUP_PICKER_ID,
+        startIn: "downloads",
         suggestedName: fileName,
-        types: [
-          {
-            description: "Workout Recommender backup",
-            accept: { "application/json": [".json"] },
-          },
-        ],
+        types: BACKUP_FILE_TYPES,
       });
       const writable = await handle.createWritable();
       await writable.write(content);
       await writable.close();
       return {
         fileName: handle.name || fileName,
-        location: "the folder you selected",
+        location: "the backup folder selected by this browser",
       };
     } catch (error) {
       if (error?.name === "AbortError") return null;
@@ -230,6 +235,23 @@ export async function exportState(state, { chooseLocation = false } = {}) {
     fileName,
     location: "your browser's Downloads location",
   };
+}
+
+export async function selectBackupFile() {
+  if (typeof window === "undefined" || typeof window.showOpenFilePicker !== "function") return undefined;
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      id: BACKUP_PICKER_ID,
+      startIn: "downloads",
+      multiple: false,
+      types: BACKUP_FILE_TYPES,
+    });
+    if (!handle) return null;
+    return await handle.getFile();
+  } catch (error) {
+    if (error?.name === "AbortError") return null;
+    throw error;
+  }
 }
 
 export async function previewImportState(file) {

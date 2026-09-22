@@ -7,7 +7,7 @@ globalThis.localStorage = {
   removeItem: key => values.delete(key),
 };
 
-const { exportState, importState, loadState, previewImportState } = await import("../src/storage.js");
+const { exportState, importState, loadState, previewImportState, selectBackupFile } = await import("../src/storage.js");
 
 values.set(
   "workout-recommender.state.v2",
@@ -115,21 +115,46 @@ globalThis.URL = {
 const download = await exportState(imported, { chooseLocation: true });
 assert.equal(appended, true);
 assert.equal(clicked, true);
-assert.match(download.fileName, /^workout-recommender-\d{4}-\d{2}-\d{2}\.json$/);
+assert.equal(download.fileName, "workout-recommender-backup.json");
 assert.equal(download.location, "your browser's Downloads location");
+assert.equal(await selectBackupFile(), undefined);
 
 let written = "";
-globalThis.window.showSaveFilePicker = async () => ({
+let savePickerOptions = null;
+globalThis.window.showSaveFilePicker = async (options) => {
+  savePickerOptions = options;
+  return {
   name: "chosen-backup.json",
   createWritable: async () => ({
     write: async content => { written = content; },
     close: async () => {},
   }),
-});
+  };
+};
 const chosen = await exportState(imported, { chooseLocation: true });
 assert.equal(chosen.fileName, "chosen-backup.json");
-assert.equal(chosen.location, "the folder you selected");
+assert.equal(chosen.location, "the backup folder selected by this browser");
 assert.equal(JSON.parse(written).profile.name, "Imported user");
+assert.equal(savePickerOptions.id, "workout-recommender-backup");
+assert.equal(savePickerOptions.startIn, "downloads");
+assert.equal(savePickerOptions.suggestedName, "workout-recommender-backup.json");
+
+let openPickerOptions = null;
+globalThis.window.showOpenFilePicker = async (options) => {
+  openPickerOptions = options;
+  return [{ getFile: async () => importFile }];
+};
+assert.equal(await selectBackupFile(), importFile);
+assert.equal(openPickerOptions.id, "workout-recommender-backup");
+assert.equal(openPickerOptions.startIn, "downloads");
+assert.equal(openPickerOptions.multiple, false);
+
+globalThis.window.showOpenFilePicker = async () => {
+  const error = new Error("Cancelled");
+  error.name = "AbortError";
+  throw error;
+};
+assert.equal(await selectBackupFile(), null);
 
 globalThis.window.showSaveFilePicker = async () => {
   const error = new Error("Cancelled");
