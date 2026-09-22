@@ -26,7 +26,7 @@ assert.doesNotMatch(app, /<strong>Previous:<\/strong>/);
 assert.match(styles, /\.session-exercise-picker summary\s*\{[^}]*display:\s*flex/s);
 assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.session-navigation-actions\s*\{[^}]*grid-template-columns:\s*1fr 1fr/s);
 assert.ok(
-  app.indexOf('class="session-exercise-picker"') < app.indexOf('class="active-set-card"'),
+  app.indexOf('class="session-exercise-picker"') < app.indexOf('class="card active-set-card"'),
   "the collapsed workout queue must stay above the active set without displacing Last performance below media",
 );
 
