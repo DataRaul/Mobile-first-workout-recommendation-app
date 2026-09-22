@@ -1847,10 +1847,21 @@ img.media-unavailable {
   color: var(--muted);
   font-weight: 650;
 }
-.session-exercise-list {
+.session-exercise-list,
+.session-exercise-dialog-list {
   display: grid;
   gap: 6px;
+}
+.session-exercise-list {
   padding: 0 10px 10px;
+}
+.session-exercise-dialog-list {
+  clear: both;
+  margin-top: 14px;
+}
+.session-exercise-picker-choice:disabled {
+  opacity: 0.68;
+  cursor: default;
 }
 .session-exercise-jump {
   display: flex;
