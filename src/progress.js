@@ -10,6 +10,31 @@ export function historySessionStatus(session) {
   return sets.length > 0 && sets.every((set) => set.done) ? "completed" : "partial";
 }
 
+export function latestExercisePerformance(history = [], exerciseId) {
+  const sessions = history
+    .filter((session) => session?.completedAt)
+    .slice()
+    .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)));
+
+  for (const session of sessions) {
+    const exercise = (session.exercises || []).find(
+      (entry) => String(entry.exerciseId) === String(exerciseId),
+    );
+    if (!exercise) continue;
+    const sets = (exercise.setsLog || []).filter((set) => set.done);
+    if (!sets.length) continue;
+    return {
+      completedAt: session.completedAt,
+      sets: sets.map((set) => ({
+        weight: set.weight ?? "",
+        reps: set.reps ?? "",
+        rir: set.rir ?? "",
+      })),
+    };
+  }
+  return null;
+}
+
 export function summarizeHistory(history = []) {
   const completed = history.filter((session) => historySessionStatus(session) === "completed").length;
   const partial = history.filter((session) => historySessionStatus(session) === "partial").length;

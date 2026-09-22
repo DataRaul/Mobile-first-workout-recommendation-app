@@ -1849,7 +1849,30 @@ img.media-unavailable {
 }
 
 .active-set-heading h2 { margin: 3px 0 0; }
-.active-set-prescription { margin-bottom: 12px; }
+.active-set-prescription { margin-bottom: 8px; }
+.active-set-previous {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+.active-set-previous span {
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.active-set-previous strong {
+  color: var(--text);
+  font-weight: 750;
+}
 .set-row.current {
   border-color: rgba(142, 227, 178, 0.52);
   background: rgba(142, 227, 178, 0.07);

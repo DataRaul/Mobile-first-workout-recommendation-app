@@ -31,6 +31,7 @@ import {
 import {
   exerciseProgressRecords,
   historySessionStatus,
+  latestExercisePerformance,
   summarizeHistory,
 } from "./progress.js";
 import {
@@ -1968,23 +1969,23 @@ function createSession() {
   persist();
 }
 
+function previousSetLabel(set) {
+  const displayedWeight = loggedWeight(set.weight);
+  const load = displayedWeight === "—" ? "bodyweight" : `${displayedWeight} ${weightUnit()}`;
+  const rir = set.rir === "" || set.rir === null || set.rir === undefined
+    ? ""
+    : ` · RIR ${set.rir}`;
+  return `${load} × ${set.reps || "—"}${rir}`;
+}
+
 function previousPerformance(exerciseId) {
-  for (const session of [...state.history].reverse()) {
-    const item = session.exercises?.find((exercise) => exercise.exerciseId === exerciseId);
-    if (item) {
-      return (
-        item.setsLog
-          ?.filter((set) => set.done)
-          .map((set) => `${loggedWeight(set.weight)} ${weightUnit()} × ${set.reps || "—"}`)
-          .join(", ") || "No completed sets logged"
-      );
-    }
+  const latest = latestExercisePerformance(state.history, exerciseId);
+  if (latest?.sets?.length) {
+    return latest.sets.map(previousSetLabel).join(", ");
   }
   const stored = state.previousProgram?.performanceByExercise?.[exerciseId];
   if (stored?.sets?.length) {
-    return stored.sets
-      .map((set) => `${loggedWeight(set.weight)} ${weightUnit()} × ${set.reps || "—"}`)
-      .join(", ");
+    return stored.sets.map(previousSetLabel).join(", ");
   }
   return "No previous logged sets";
 }
@@ -2003,6 +2004,7 @@ function renderSession({ focusHeading = false } = {}) {
   const totalSets = session.exercises.flatMap((entry) => entry.setsLog).length;
   const instructions = instructionSteps(exercise);
   const unit = weightUnit();
+  const previous = previousPerformance(exercise.id);
   const firstIncompleteSet = item.setsLog.findIndex((set) => !set.done);
   const activeSetIndex = firstIncompleteSet === -1
     ? Math.max(0, item.setsLog.length - 1)
@@ -2024,6 +2026,7 @@ function renderSession({ focusHeading = false } = {}) {
       <article class="card active-set-card">
         <div class="active-set-heading"><div><div class="eyebrow">${escapeHtml(activeSetLabel)}</div><h2>Weight · reps · RIR</h2></div><span class="chip">${item.sets} × ${escapeHtml(item.reps)}</span></div>
         <p class="active-set-prescription">Prescription: ${item.sets} × ${escapeHtml(item.reps)} · programme rest ${item.restSeconds}s${state.preferences?.defaultRestSeconds ? ` · preferred timer ${preferredRestSeconds(item.restSeconds)}s` : ""}. Weight is optional for bodyweight movements. RIR means repetitions in reserve.</p>
+        <p class="active-set-previous"><span>Last</span><strong>${escapeHtml(previous)}</strong></p>
         <div class="set-table">
           <div class="set-table-head" aria-hidden="true"><span>Set</span><span>Weight (${unit})</span><span>Reps / sec</span><span>RIR</span><span>Done</span></div>
           ${item.setsLog
@@ -2061,7 +2064,6 @@ function renderSession({ focusHeading = false } = {}) {
           <span class="chip complexity-chip">${escapeHtml(complexityText(exercise))}${item.difficultyDelta ? ` · ${escapeHtml(difficultyFallbackText(item))}` : ""}</span>
         </div>
         ${constraintNotesHtml(item)}
-        <p><strong>Previous:</strong> ${escapeHtml(previousPerformance(exercise.id))}</p>
         ${item.carriedFromPrevious ? `<div class="notice"><strong>Follow-up starting values</strong><p>${escapeHtml(item.continuation?.reason || "The previous recorded values are prefilled.")} Edit weight, repetitions and RIR to match what you actually complete today.</p></div>` : ""}
         ${instructions.length
           ? `<details><summary>How to perform it</summary><ol class="instructions">${instructions.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></details>`

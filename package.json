@@ -1,6 +1,6 @@
 {
   "name": "mobile-first-workout-recommendation-app",
-  "version": "3.9.3",
+  "version": "3.9.4",
   "private": true,
   "type": "module",
   "description": "Mobile-first workout recommendation and tracking PWA.",
