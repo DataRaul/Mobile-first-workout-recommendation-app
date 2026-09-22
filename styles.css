@@ -1828,6 +1828,62 @@ img.media-unavailable {
 }
 
 /* Rest timer UX v3.9.0 */
+.session-exercise-picker {
+  margin: 12px 0 10px;
+  padding: 0;
+  overflow: hidden;
+}
+.session-exercise-picker summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 850;
+}
+.session-exercise-picker summary small,
+.session-order-actions small {
+  color: var(--muted);
+  font-weight: 650;
+}
+.session-exercise-list {
+  display: grid;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+.session-exercise-jump {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.session-exercise-jump small { color: var(--muted); }
+.session-exercise-jump.current {
+  border-color: rgba(142, 227, 178, 0.52);
+  background: rgba(142, 227, 178, 0.07);
+}
+.session-exercise-jump[data-status="completed"] > span::after {
+  content: " ✓";
+}
+.session-order-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+.session-navigation-actions {
+  align-items: stretch;
+}
+
 .active-set-card {
   border-color: rgba(142, 227, 178, 0.48);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
@@ -1928,4 +1984,11 @@ img.media-unavailable {
   .rest-controls > * { min-height: 44px; }
   .timer-profile-controls { grid-template-columns: 1fr; }
   .active-set-card input:focus { scroll-margin-bottom: 160px; }
+  .session-exercise-picker summary,
+  .session-order-actions { align-items: flex-start; }
+  .session-exercise-picker summary { flex-direction: column; gap: 3px; }
+  .session-order-actions { flex-direction: column; }
+  .session-order-actions .btn { width: 100%; }
+  .session-navigation-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .session-navigation-actions #finishWorkout { grid-column: 1 / -1; }
 }

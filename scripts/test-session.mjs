@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import {
   latestRecordedSession,
   invalidCompletedSets,
+  exerciseSessionStatus,
+  nextUnfinishedExerciseIndex,
   READINESS_GUIDANCE,
   restSecondsRemaining,
   restTimerEnd,
@@ -73,6 +75,32 @@ assert.equal(
 );
 assert.match(READINESS_GUIDANCE.fatigued.guidance, /5–10% less weight/);
 assert.match(READINESS_GUIDANCE.pain.guidance, /Do not train through/);
+
+assert.equal(exerciseSessionStatus({ setsLog: [{ weight: "", reps: "", rir: "", done: false }] }), "not_started");
+assert.equal(exerciseSessionStatus({ setsLog: [{ weight: "20", reps: "", rir: "", done: false }] }), "in_progress");
+assert.equal(exerciseSessionStatus({ setsLog: [{ weight: "", reps: "8", rir: "2", done: true }] }), "completed");
+const flexibleSession = {
+  currentIndex: 0,
+  exercises: [
+    { setsLog: [{ reps: "8", done: false }] },
+    { setsLog: [{ reps: "8", done: true }] },
+    { setsLog: [{ reps: "", done: false }] },
+  ],
+};
+assert.equal(nextUnfinishedExerciseIndex(flexibleSession, 0), 2);
+assert.equal(nextUnfinishedExerciseIndex(flexibleSession, 2), 0);
+assert.equal(
+  nextUnfinishedExerciseIndex({
+    currentIndex: 2,
+    exercises: [
+      { setsLog: [{ reps: "8", done: true }] },
+      { setsLog: [{ reps: "8", done: true }] },
+      { setsLog: [{ reps: "", done: false }] },
+    ],
+  }),
+  -1,
+  "skip is unavailable when every other exercise is complete",
+);
 
 assert.deepEqual(validateSetLog({ weight: "", reps: "12", rir: "2" }), {
   valid: true,

@@ -10,6 +10,27 @@ export function sessionCompletion(session) {
   };
 }
 
+export function exerciseSessionStatus(exercise) {
+  const sets = exercise?.setsLog || [];
+  if (sets.length > 0 && sets.every((set) => set.done)) return "completed";
+  const started = sets.some(
+    (set) =>
+      set.done ||
+      ["weight", "reps", "rir"].some((field) => String(set?.[field] ?? "").trim()),
+  );
+  return started ? "in_progress" : "not_started";
+}
+
+export function nextUnfinishedExerciseIndex(session, fromIndex = session?.currentIndex ?? 0) {
+  const exercises = session?.exercises || [];
+  if (exercises.length < 2) return -1;
+  for (let offset = 1; offset < exercises.length; offset += 1) {
+    const index = (Number(fromIndex) + offset) % exercises.length;
+    if (exerciseSessionStatus(exercises[index]) !== "completed") return index;
+  }
+  return -1;
+}
+
 export function sessionMetrics(session) {
   const completion = sessionCompletion(session);
   const volume = (session?.exercises || [])
