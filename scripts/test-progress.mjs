@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import {
   exerciseProgressRecords,
   historySessionStatus,
+  latestExercisePerformance,
   summarizeHistory,
 } from "../src/progress.js";
 
@@ -15,8 +16,8 @@ const history = [
       {
         exerciseId: "press",
         setsLog: [
-          { weight: "20", reps: "10", done: true },
-          { weight: "20", reps: "8", done: true },
+          { weight: "20", reps: "10", rir: "2", done: true },
+          { weight: "20", reps: "8", rir: "1", done: true },
         ],
       },
     ],
@@ -29,8 +30,8 @@ const history = [
       {
         exerciseId: "press",
         setsLog: [
-          { weight: "22.5", reps: "10", done: true },
-          { weight: "22.5", reps: "8", done: false },
+          { weight: "22.5", reps: "10", rir: "2", done: true },
+          { weight: "22.5", reps: "8", rir: "1", done: false },
         ],
       },
     ],
@@ -56,6 +57,27 @@ assert.equal(press.bestReps, 10);
 assert.equal(press.bestSetVolumeKgReps, 225);
 assert.equal(press.loadChangeKg, 2.5);
 assert.equal(press.repChange, 0);
+
+assert.deepEqual(latestExercisePerformance(history, "press"), {
+  completedAt: "2026-08-08T10:00:00.000Z",
+  sets: [{ weight: "22.5", reps: "10", rir: "2" }],
+});
+assert.equal(latestExercisePerformance(history, "missing"), null);
+assert.deepEqual(
+  latestExercisePerformance(
+    [
+      ...history,
+      {
+        id: "three",
+        completedAt: "2026-08-15T10:00:00.000Z",
+        exercises: [{ exerciseId: "press", setsLog: [{ weight: "30", reps: "5", rir: "3", done: false }] }],
+      },
+    ],
+    "press",
+  )?.sets,
+  [{ weight: "22.5", reps: "10", rir: "2" }],
+  "an empty latest occurrence must not hide the most recent completed performance",
+);
 
 const app = await readFile(new URL("../src/app.js", import.meta.url), "utf8");
 const styles = await readFile(new URL("../styles.css", import.meta.url), "utf8");
