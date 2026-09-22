@@ -37,6 +37,8 @@ import {
 import {
   latestRecordedSession,
   invalidCompletedSets,
+  exerciseSessionStatus,
+  nextUnfinishedExerciseIndex,
   READINESS_GUIDANCE,
   adjustRestTimer,
   cancelRestTimer,
@@ -1990,6 +1992,12 @@ function previousPerformance(exerciseId) {
   return "No previous logged sets";
 }
 
+function sessionExerciseStatusLabel(status) {
+  if (status === "completed") return "Completed";
+  if (status === "in_progress") return "In progress";
+  return "Not started";
+}
+
 function renderSession({ focusHeading = false } = {}) {
   const session = state.activeSession;
   if (!session) {
@@ -2005,6 +2013,13 @@ function renderSession({ focusHeading = false } = {}) {
   const instructions = instructionSteps(exercise);
   const unit = weightUnit();
   const previous = previousPerformance(exercise.id);
+  const exerciseStatuses = session.exercises.map((entry) => exerciseSessionStatus(entry));
+  const completedExercises = exerciseStatuses.filter((status) => status === "completed").length;
+  const skipTargetIndex = nextUnfinishedExerciseIndex(session, session.currentIndex);
+  const nextNavigationIndex =
+    session.currentIndex < session.exercises.length - 1
+      ? session.currentIndex + 1
+      : skipTargetIndex;
   const firstIncompleteSet = item.setsLog.findIndex((set) => !set.done);
   const activeSetIndex = firstIncompleteSet === -1
     ? Math.max(0, item.setsLog.length - 1)
@@ -2023,6 +2038,26 @@ function renderSession({ focusHeading = false } = {}) {
         <button id="exitSession" class="btn ghost small">Exit</button>
       </div>
       <div class="progress-track" role="progressbar" aria-label="Workout sets completed" aria-valuemin="0" aria-valuemax="${totalSets}" aria-valuenow="${completedSets}"><span style="width:${(completedSets / totalSets) * 100}%"></span></div>
+      <details class="card session-exercise-picker">
+        <summary><span>Today's exercises</span><small>${completedExercises}/${session.exercises.length} complete · tap to jump</small></summary>
+        <div class="session-exercise-list" role="list" aria-label="Exercises in today's workout">
+          ${session.exercises
+            .map((entry, index) => {
+              const listedExercise = exerciseById(entry.exerciseId);
+              const status = exerciseStatuses[index];
+              const current = index === session.currentIndex;
+              return `<button type="button" class="session-exercise-jump ${current ? "current" : ""}" data-exercise-index="${index}" data-status="${status}" ${current ? 'aria-current="step"' : ""}>
+                <span>${index + 1}. ${escapeHtml(listedExercise?.name || `Exercise ${index + 1}`)}</span>
+                <small>${current ? "Current · " : ""}${sessionExerciseStatusLabel(status)}</small>
+              </button>`;
+            })
+            .join("")}
+        </div>
+      </details>
+      <div class="session-order-actions">
+        <button id="skipExerciseLater" class="btn ghost small" type="button" ${skipTargetIndex < 0 ? "disabled" : ""}>Skip for later</button>
+        <small>Changes today's execution order only. Your routine stays unchanged.</small>
+      </div>
       <article class="card active-set-card">
         <div class="active-set-heading"><div><div class="eyebrow">${escapeHtml(activeSetLabel)}</div><h2>Weight · reps · RIR</h2></div><span class="chip">${item.sets} × ${escapeHtml(item.reps)}</span></div>
         <p class="active-set-prescription">Prescription: ${item.sets} × ${escapeHtml(item.reps)} · programme rest ${item.restSeconds}s${state.preferences?.defaultRestSeconds ? ` · preferred timer ${preferredRestSeconds(item.restSeconds)}s` : ""}. Weight is optional for bodyweight movements. RIR means repetitions in reserve.</p>
@@ -2085,9 +2120,10 @@ function renderSession({ focusHeading = false } = {}) {
         <button id="replaceRoutine" class="btn">Choose substitute for routine</button>
         <button id="machineUnavailable" class="btn danger">Not available at this gym</button>
       </div>
-      <div class="actions">
+      <div class="actions session-navigation-actions">
         <button id="prevExercise" class="btn ghost" ${session.currentIndex === 0 ? "disabled" : ""}>Previous</button>
-        <button id="nextExercise" class="btn primary">${session.currentIndex === session.exercises.length - 1 ? "Finish workout" : "Next exercise"}</button>
+        <button id="nextExercise" class="btn" ${nextNavigationIndex < 0 ? "disabled" : ""}>${session.currentIndex < session.exercises.length - 1 ? "Next exercise" : "Next unfinished"}</button>
+        <button id="finishWorkout" class="btn primary">Finish workout</button>
       </div>
     </div>`;
 
@@ -2166,21 +2202,33 @@ function renderSession({ focusHeading = false } = {}) {
     renderToday();
     view("todayView");
   };
-  $("#prevExercise").onclick = () => {
+  function goToSessionExercise(index) {
+    const targetIndex = Number(index);
+    if (
+      !Number.isInteger(targetIndex) ||
+      targetIndex < 0 ||
+      targetIndex >= session.exercises.length ||
+      targetIndex === session.currentIndex
+    ) return;
     syncVisibleSetInputs();
-    session.currentIndex -= 1;
+    session.currentIndex = targetIndex;
     persist();
     renderSession({ focusHeading: true });
+  }
+
+  $$(".session-exercise-jump").forEach((button) => {
+    button.onclick = () => goToSessionExercise(button.dataset.exerciseIndex);
+  });
+  $("#skipExerciseLater").onclick = () => {
+    if (skipTargetIndex >= 0) goToSessionExercise(skipTargetIndex);
   };
+  $("#prevExercise").onclick = () => goToSessionExercise(session.currentIndex - 1);
   $("#nextExercise").onclick = () => {
+    if (nextNavigationIndex >= 0) goToSessionExercise(nextNavigationIndex);
+  };
+  $("#finishWorkout").onclick = () => {
     syncVisibleSetInputs();
-    if (session.currentIndex < session.exercises.length - 1) {
-      session.currentIndex += 1;
-      persist();
-      renderSession({ focusHeading: true });
-    } else {
-      finishSession();
-    }
+    finishSession();
   };
   $("#replaceToday").onclick = () => openReplacementPicker({ scope: "session", permanent: false });
   $("#replaceRoutine").onclick = () => openReplacementPicker({ scope: "session", permanent: true });

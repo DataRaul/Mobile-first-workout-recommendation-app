@@ -13,6 +13,9 @@ assert.match(app, /Warm up before working sets/);
 assert.match(app, /Pain or unusual symptoms during this movement/);
 assert.match(app, /name="weightUnit"/);
 assert.match(app, /id="profileWeightUnit"/);
+assert.match(app, /id="finishWorkout"/);
+assert.match(app, /finishSession\(\)/);
+assert.match(app, /Save this workout as partial\?/);
 assert.match(styles, /\.set-row\.invalid input\[aria-invalid="true"\]/);
 
 console.log("Active workout validation, safety and unit checks passed.");

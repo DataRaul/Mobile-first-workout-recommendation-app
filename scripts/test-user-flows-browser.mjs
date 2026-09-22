@@ -154,6 +154,93 @@ try {
   const startingSessionIndex = current.activeSession.currentIndex;
   const expectedTemplateId = current.activeProgram.workouts.find((workout) => workout.id === sessionWorkoutId).exercises[startingSessionIndex].exerciseId;
   assert.equal(String(current.activeSession.exercises[startingSessionIndex].exerciseId), String(expectedTemplateId), "session starts from the accepted routine template");
+  assert.ok(current.activeSession.exercises.length >= 3, "browser fixture provides at least three planned exercises for jump coverage");
+
+  const routineOrderBeforeJump = current.activeProgram.workouts
+    .find((workout) => workout.id === sessionWorkoutId)
+    .exercises.map((entry) => String(entry.exerciseId));
+  const gymUnavailableBeforeJump = [...current.gym.unavailableExerciseIds].map(String);
+  const jumpTargetIndex = 2;
+  const firstExerciseId = current.activeSession.exercises[startingSessionIndex].exerciseId;
+  const thirdExerciseId = current.activeSession.exercises[jumpTargetIndex].exerciseId;
+
+  await page.evaluate(({ firstExerciseId, thirdExerciseId }) => {
+    const key = "workout-recommender.state.v2";
+    const stored = JSON.parse(localStorage.getItem(key));
+    stored.history.push(
+      {
+        id: "jump-test-a",
+        completedAt: "2026-09-20T10:00:00.000Z",
+        status: "completed",
+        exercises: [{
+          exerciseId: firstExerciseId,
+          setsLog: [{ set: 1, weight: "41", reps: "9", rir: "2", done: true }],
+        }],
+      },
+      {
+        id: "jump-test-c",
+        completedAt: "2026-09-21T10:00:00.000Z",
+        status: "completed",
+        exercises: [{
+          exerciseId: thirdExerciseId,
+          setsLog: [{ set: 1, weight: "73", reps: "6", rir: "1", done: true }],
+        }],
+      },
+    );
+    localStorage.setItem(key, JSON.stringify(stored));
+  }, { firstExerciseId, thirdExerciseId });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForDataset(page);
+  await page.waitForSelector("#sessionView.active");
+  assert.match(await page.locator(".active-set-previous").innerText(), /Last\s+41 kg × 9 · RIR 2/i, "#52 Last performance is visible for exercise A before jumping");
+
+  let jumpRow = page.locator(".set-row.current");
+  await jumpRow.locator("input[data-field='weight']").fill("44.5");
+  await jumpRow.locator("input[data-field='reps']").fill("7");
+  await jumpRow.locator("input[data-field='rir']").fill("3");
+  await page.click("#skipExerciseLater");
+  await waitForState(page, "(state) => state.activeSession.currentIndex === 1");
+
+  current = await stateFromPage(page);
+  assert.deepEqual(
+    current.activeProgram.workouts.find((workout) => workout.id === sessionWorkoutId).exercises.map((entry) => String(entry.exerciseId)),
+    routineOrderBeforeJump,
+    "skip-for-later changes session navigation only, not routine order",
+  );
+  assert.deepEqual(current.gym.unavailableExerciseIds.map(String), gymUnavailableBeforeJump, "skip-for-later does not create gym-unavailable learning");
+
+  await page.click(".session-exercise-picker summary");
+  await page.click(`.session-exercise-jump[data-exercise-index='${jumpTargetIndex}']`);
+  await waitForState(page, "(state, arg) => state.activeSession.currentIndex === arg", jumpTargetIndex);
+  assert.match(await page.locator(".active-set-previous").innerText(), /Last\s+73 kg × 6 · RIR 1/i, "#52 Last performance updates to exercise C after a direct jump");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForDataset(page);
+  await page.waitForSelector("#sessionView.active");
+  assert.equal((await stateFromPage(page)).activeSession.currentIndex, jumpTargetIndex, "selected exercise survives reload");
+  assert.match(await page.locator(".active-set-previous").innerText(), /73 kg × 6 · RIR 1/i, "jumped exercise keeps its Last performance after reload");
+
+  await page.click(".session-exercise-picker summary");
+  await page.click(`.session-exercise-jump[data-exercise-index='${startingSessionIndex}']`);
+  await waitForState(page, "(state, arg) => state.activeSession.currentIndex === arg", startingSessionIndex);
+  jumpRow = page.locator(".set-row.current");
+  assert.equal(await jumpRow.locator("input[data-field='weight']").inputValue(), "44.5", "exercise A weight survives A -> skip -> C -> reload -> A");
+  assert.equal(await jumpRow.locator("input[data-field='reps']").inputValue(), "7", "exercise A reps survive flexible navigation");
+  assert.equal(await jumpRow.locator("input[data-field='rir']").inputValue(), "3", "exercise A RIR survives flexible navigation");
+  assert.match(await page.locator(".active-set-previous").innerText(), /41 kg × 9 · RIR 2/i, "returning to A restores A's Last performance");
+
+  await page.evaluate(() => {
+    const key = "workout-recommender.state.v2";
+    const stored = JSON.parse(localStorage.getItem(key));
+    stored.history = stored.history.filter((entry) => !["jump-test-a", "jump-test-c"].includes(entry.id));
+    localStorage.setItem(key, JSON.stringify(stored));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForDataset(page);
+  await page.waitForSelector("#sessionView.active");
+  assert.equal((await stateFromPage(page)).activeSession.currentIndex, startingSessionIndex, "cleanup reload preserves the returned exercise");
+  assert.equal(await page.locator(".set-row.current input[data-field='weight']").inputValue(), "44.5", "entered load survives cleanup reload");
 
   await page.click("#exitSession");
   await page.waitForSelector("#todayView.active");
@@ -255,13 +342,17 @@ try {
     }
 
     const beforeNext = await stateFromPage(page);
-    const lastExercise = beforeNext.activeSession.currentIndex === beforeNext.activeSession.exercises.length - 1;
-    await page.click("#nextExercise");
-    if (lastExercise) {
+    const allSetsDone = beforeNext.activeSession.exercises.every((exercise) =>
+      exercise.setsLog.every((set) => set.done)
+    );
+    if (allSetsDone) {
+      await page.click("#finishWorkout");
       await waitForState(page, "(state) => state.activeSession === null");
       break;
     }
-    await waitForState(page, "(state, arg) => state.activeSession.currentIndex === arg", beforeNext.activeSession.currentIndex + 1);
+    const expectedNextIndex = beforeNext.activeSession.currentIndex + 1;
+    await page.click("#nextExercise");
+    await waitForState(page, "(state, arg) => state.activeSession.currentIndex === arg", expectedNextIndex);
   }
 
   await page.waitForSelector("#progressView.active");
@@ -320,10 +411,12 @@ try {
   while (true) {
     const partialState = await stateFromPage(page);
     const isLast = partialState.activeSession.currentIndex === partialState.activeSession.exercises.length - 1;
-    await page.click("#nextExercise");
     if (isLast) break;
+    await page.click("#nextExercise");
     await waitForState(page, "(state, arg) => state.activeSession?.currentIndex === arg", partialState.activeSession.currentIndex + 1);
   }
+  assert.ok((await stateFromPage(page)).activeSession, "reaching the final array position does not implicitly finish a partial workout");
+  await page.click("#finishWorkout");
   await waitForState(page, "(state) => state.activeSession === null");
   await page.waitForSelector("#progressView.active");
   current = await stateFromPage(page);
@@ -339,4 +432,4 @@ try {
   await new Promise((resolve) => server.close(resolve));
 }
 
-console.log("Full Chromium user-flow regression passed: onboarding, programme, exercise library, routine persistence, workout resume, timer persistence, substitutions, gym learning, completion, history correction, partial-session handling and profile preferences all work end-to-end.");
+console.log("Full Chromium user-flow regression passed: onboarding, programme, exercise library, routine persistence, workout resume, flexible exercise jumping with previous-performance integration, timer persistence, substitutions, gym learning, explicit completion, history correction, partial-session handling and profile preferences all work end-to-end.");

@@ -1,4 +1,4 @@
-const CACHE = "workout-recommender-v3.9.4-active-performance-20260922";
+const CACHE = "workout-recommender-v3.9.5-flexible-session-order-20260922";
 
 const APP = [
   "./", "./index.html", "./styles.css", "./accessibility.css", "./customization.css", "./ux-polish.css", "./manifest.webmanifest",
