@@ -24,6 +24,8 @@ assert.match(app, /<span>Last<\/span><strong>\$\{escapeHtml\(previous\)\}<\/stro
 assert.match(app, /RIR \$\{set\.rir\}/);
 assert.doesNotMatch(app, /<strong>Previous:<\/strong>/);
 assert.match(styles, /\.session-exercise-picker summary\s*\{[^}]*display:\s*flex/s);
+assert.match(app, /Skip for later[\s\S]*Choose next exercise/);
+assert.match(app, /session-exercise-dialog-list/);
 assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.session-navigation-actions\s*\{[^}]*grid-template-columns:\s*1fr 1fr/s);
 assert.ok(
   app.indexOf('class="session-exercise-picker"') < app.indexOf('class="card active-set-card"'),

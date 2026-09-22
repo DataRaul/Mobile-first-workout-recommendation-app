@@ -83,5 +83,5 @@ assert.match(app, /pageshow/);
 assert.match(app, /navigator\.wakeLock\?\.request/);
 assert.match(app, /nextSet\.weight = set\.weight/);
 assert.match(styles, /\.set-row\.current/);
-assert.match(worker, /workout-recommender-v3\.9\.5-flexible-session-order-20260922/);
+assert.match(worker, /workout-recommender-v3\.9\.6-skip-picker-20260922/);
 console.log("Rest timer, optional behavior, suspension recovery, persistence and active-set regressions passed.");

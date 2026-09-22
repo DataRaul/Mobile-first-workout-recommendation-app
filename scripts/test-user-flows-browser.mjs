@@ -200,19 +200,45 @@ try {
   await jumpRow.locator("input[data-field='reps']").fill("7");
   await jumpRow.locator("input[data-field='rir']").fill("3");
   await page.click("#skipExerciseLater");
-  await waitForState(page, "(state) => state.activeSession.currentIndex === 1");
+  await page.waitForSelector("#exerciseDialog[open]");
+  assert.equal((await stateFromPage(page)).activeSession.currentIndex, startingSessionIndex, "Skip for later opens the day picker without auto-navigating");
+  assert.equal(
+    await page.locator(".session-exercise-picker-choice").count(),
+    current.activeSession.exercises.length,
+    "skip picker shows the full day's exercise list",
+  );
+  assert.equal(
+    await page.locator(`.session-exercise-picker-choice[data-exercise-index='${startingSessionIndex}']`).isDisabled(),
+    true,
+    "current exercise is identified but is not a redundant navigation target",
+  );
+  assert.match(
+    await page.locator(`.session-exercise-picker-choice[data-exercise-index='${jumpTargetIndex}']`).innerText(),
+    /Not started|In progress|Completed/i,
+    "picker exposes exercise status before the user chooses",
+  );
+
+  current = await stateFromPage(page);
+  assert.equal(current.activeSession.exercises[startingSessionIndex].setsLog[0].weight, "44.5", "opening the skip picker persists visible weight");
+  assert.equal(current.activeSession.exercises[startingSessionIndex].setsLog[0].reps, "7", "opening the skip picker persists visible reps");
+  assert.equal(current.activeSession.exercises[startingSessionIndex].setsLog[0].rir, "3", "opening the skip picker persists visible RIR");
+
+  await page.click(`.session-exercise-picker-choice[data-exercise-index='${jumpTargetIndex}']`);
+  await waitForState(page, "(state, arg) => state.activeSession.currentIndex === arg", jumpTargetIndex);
+  await page.waitForFunction(() => !document.querySelector("#exerciseDialog")?.open);
 
   current = await stateFromPage(page);
   assert.deepEqual(
     current.activeProgram.workouts.find((workout) => workout.id === sessionWorkoutId).exercises.map((entry) => String(entry.exerciseId)),
     routineOrderBeforeJump,
-    "skip-for-later changes session navigation only, not routine order",
+    "skip-for-later picker changes session navigation only, not routine order",
   );
-  assert.deepEqual(current.gym.unavailableExerciseIds.map(String), gymUnavailableBeforeJump, "skip-for-later does not create gym-unavailable learning");
-
-  await page.click(".session-exercise-picker summary");
-  await page.click(`.session-exercise-jump[data-exercise-index='${jumpTargetIndex}']`);
-  await waitForState(page, "(state, arg) => state.activeSession.currentIndex === arg", jumpTargetIndex);
+  assert.deepEqual(current.gym.unavailableExerciseIds.map(String), gymUnavailableBeforeJump, "skip-for-later picker does not create gym-unavailable learning");
+  assert.equal(
+    current.activeSession.exercises[startingSessionIndex].setsLog.some((set) => set.done),
+    false,
+    "skipped exercise remains unfinished and selectable later",
+  );
   assert.match(await page.locator(".active-set-previous").innerText(), /Last\s+73 kg × 6 · RIR 1/i, "#52 Last performance updates to exercise C after a direct jump");
 
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -432,4 +458,4 @@ try {
   await new Promise((resolve) => server.close(resolve));
 }
 
-console.log("Full Chromium user-flow regression passed: onboarding, programme, exercise library, routine persistence, workout resume, flexible exercise jumping with previous-performance integration, timer persistence, substitutions, gym learning, explicit completion, history correction, partial-session handling and profile preferences all work end-to-end.");
+console.log("Full Chromium user-flow regression passed: onboarding, programme, exercise library, routine persistence, workout resume, skip-picker exercise jumping with previous-performance integration, timer persistence, substitutions, gym learning, explicit completion, history correction, partial-session handling and profile preferences all work end-to-end.");

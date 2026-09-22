@@ -2216,11 +2216,42 @@ function renderSession({ focusHeading = false } = {}) {
     renderSession({ focusHeading: true });
   }
 
-  $$(".session-exercise-jump").forEach((button) => {
+  function openSessionExercisePicker() {
+    syncVisibleSetInputs();
+    const dialog = $("#exerciseDialog");
+    const statuses = session.exercises.map((entry) => exerciseSessionStatus(entry));
+    $("#exerciseDialogContent").innerHTML = `
+      <div class="eyebrow">Skip for later</div>
+      <h2>Choose next exercise</h2>
+      <p>Your current exercise stays in today's workout. Pick any planned exercise below; nothing is substituted or removed.</p>
+      <div class="session-exercise-dialog-list" role="list" aria-label="Choose another exercise from today's workout">
+        ${session.exercises
+          .map((entry, index) => {
+            const listedExercise = exerciseById(entry.exerciseId);
+            const status = statuses[index];
+            const current = index === session.currentIndex;
+            return `<button type="button" class="session-exercise-jump session-exercise-picker-choice ${current ? "current" : ""}" data-exercise-index="${index}" data-status="${status}" ${current ? "disabled aria-current=step" : ""}>
+              <span>${index + 1}. ${escapeHtml(listedExercise?.name || `Exercise ${index + 1}`)}</span>
+              <small>${current ? "Current · " : ""}${sessionExerciseStatusLabel(status)}</small>
+            </button>`;
+          })
+          .join("")}
+      </div>`;
+    dialog.scrollTop = 0;
+    dialog.showModal();
+    $$(".session-exercise-picker-choice").forEach((button) => {
+      button.onclick = () => {
+        dialog.close();
+        goToSessionExercise(button.dataset.exerciseIndex);
+      };
+    });
+  }
+
+  $$(".session-exercise-picker > .session-exercise-list .session-exercise-jump").forEach((button) => {
     button.onclick = () => goToSessionExercise(button.dataset.exerciseIndex);
   });
   $("#skipExerciseLater").onclick = () => {
-    if (skipTargetIndex >= 0) goToSessionExercise(skipTargetIndex);
+    if (skipTargetIndex >= 0) openSessionExercisePicker();
   };
   $("#prevExercise").onclick = () => goToSessionExercise(session.currentIndex - 1);
   $("#nextExercise").onclick = () => {
