@@ -2230,7 +2230,7 @@ function renderSession({ focusHeading = false } = {}) {
             const listedExercise = exerciseById(entry.exerciseId);
             const status = statuses[index];
             const current = index === session.currentIndex;
-            return `<button type="button" class="session-exercise-jump session-exercise-picker-choice ${current ? "current" : ""}" data-exercise-index="${index}" data-status="${status}" ${current ? "disabled aria-current=\\"step\\"" : ""}>
+            return `<button type="button" class="session-exercise-jump session-exercise-picker-choice ${current ? "current" : ""}" data-exercise-index="${index}" data-status="${status}" ${current ? "disabled aria-current=step" : ""}>
               <span>${index + 1}. ${escapeHtml(listedExercise?.name || `Exercise ${index + 1}`)}</span>
               <small>${current ? "Current · " : ""}${sessionExerciseStatusLabel(status)}</small>
             </button>`;
