@@ -114,9 +114,11 @@ Only exact retained exercises carry their last completed weight, repetitions and
 
 ## Storage
 
-Profiles, programmes, sessions, gym observations and history are stored in browser `localStorage` on the current phone or computer. During profile creation, the user can keep the live profile in that browser only or also create a portable JSON backup. Compatible desktop browsers open a Save dialog; mobile and other browsers use their normal Downloads location. The Profile screen always identifies the live storage location and supports JSON export/import.
+Profiles, programmes, sessions, gym observations and history are stored in browser `localStorage` on the current phone or computer. Telegram, WhatsApp and an external browser can therefore hold separate live copies even when they open the same GitHub Pages URL.
 
-There is no account or cloud sync. Clearing the browser's site data removes the local copy unless a JSON backup was created.
+The portable bridge is a validated JSON backup. Exports use the stable filename `workout-recommender-backup.json` and start in Downloads when the browser exposes the File System Access picker. Save and Open use the same picker ID, so compatible browsers can remember the previously used backup directory. Browsers/WebViews without that API fall back to the normal download and file-input flow. A profile-less first launch prominently offers **Restore existing profile** before requiring new onboarding.
+
+There is no account or cloud sync, and the app cannot silently read a shared phone folder on launch. File access remains user-permission gated. Clearing a browser's site data removes that browser's local copy unless a portable backup was created.
 
 The 1,324-exercise JSON and media are loaded from the source repository and can be cached by the service worker. They are not duplicated in this repository.
 

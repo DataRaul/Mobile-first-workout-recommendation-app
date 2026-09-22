@@ -4,6 +4,7 @@ import {
   exportState,
   loadState,
   previewImportState,
+  selectBackupFile,
   resetState,
   saveState,
 } from "./storage.js";
@@ -195,8 +196,8 @@ function backupMessage(backup) {
 
 function exportLocationHelp() {
   return typeof window.showSaveFilePicker === "function"
-    ? "Export opens a Save dialog so you can choose the folder and filename on this device."
-    : "Export creates a JSON file in the Downloads location selected by this browser or device.";
+    ? "Export starts in Downloads. Compatible browsers remember the last backup folder and reopen Save/Import there next time."
+    : "Export creates workout-recommender-backup.json in the Downloads location selected by this browser or device.";
 }
 
 function backupStatusHtml(preferences) {
@@ -211,6 +212,58 @@ function backupStatusHtml(preferences) {
   const ageDays = Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
   const ageText = ageDays === 0 ? "today" : `${ageDays} day${ageDays === 1 ? "" : "s"} ago`;
   return `<div class="notice ${ageDays < 30 ? "subtle" : ""}"><strong>${ageDays >= 30 ? "Backup reminder" : "Latest portable backup"}</strong><p>${escapeHtml(preferences.lastBackupFileName)} was created ${ageText} in ${escapeHtml(preferences.lastBackupLocation || "your download location")}. Create a fresh file after important programme or history changes.</p></div>`;
+}
+
+async function importBackupFile(file, input = null) {
+  const preview = await previewImportState(file);
+  const programmeState = preview.activeProgram ? "an active programme" : preview.draftProgram ? "a saved draft recommendation" : "no saved programme";
+  const accepted = confirm(
+    `Import backup for “${preview.profile?.name || "Unnamed profile"}”?\n\nIt contains ${preview.history.length} recorded workout${preview.history.length === 1 ? "" : "s"}, ${programmeState}, and ${preview.gym?.unavailableExerciseIds?.length || 0} unavailable gym item${preview.gym?.unavailableExerciseIds?.length === 1 ? "" : "s"}.\n\nThis will replace the live profile, programme, history and settings in this browser.`,
+  );
+  if (!accepted) {
+    if (input) input.value = "";
+    toast("Import cancelled. Live data was not changed.");
+    return false;
+  }
+  state = preview;
+  saveState(state);
+  reconcileStoredProgramMetrics();
+  renderAll();
+  routeInitial();
+  if (input) input.value = "";
+  toast("Backup imported after preview confirmation.");
+  return true;
+}
+
+async function startBackupRestore(fallbackInput) {
+  if (typeof window.showOpenFilePicker !== "function") {
+    fallbackInput?.click();
+    return;
+  }
+  try {
+    const file = await selectBackupFile();
+    if (!file) {
+      toast("Import cancelled.");
+      return;
+    }
+    await importBackupFile(file);
+  } catch (error) {
+    alert(`Could not import backup: ${error.message}`);
+  }
+}
+
+function bindBackupImportInput(input) {
+  if (!input) return;
+  input.onchange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      await importBackupFile(file, event.target);
+    } catch (error) {
+      event.target.value = "";
+      alert(`Could not import backup: ${error.message}`);
+    }
+  };
 }
 
 function weightUnit() {
@@ -982,6 +1035,16 @@ function renderOnboarding(edit = false) {
       <p>Choose the goal, schedule, weekly structure, equipment and safety constraints. Every training day can have its own type and muscle emphasis.</p>
       <button id="openHowItWorks" class="btn ghost small" type="button">How this app works</button>
     </div>
+    ${edit ? "" : `
+      <div class="card portability-restore">
+        <div class="eyebrow">Already have a profile?</div>
+        <h2>Restore your existing workout data</h2>
+        <p>Telegram, WhatsApp and your normal browser can keep separate local copies even when they open the same link. If you already exported a backup, restore it here instead of creating another profile.</p>
+        <div class="actions">
+          <button id="restoreExistingProfile" class="btn primary" type="button">Restore existing profile</button>
+          <input id="onboardingImportData" type="file" accept="application/json,.json" hidden>
+        </div>
+      </div>`}
     <form id="profileForm" class="card grid">
       <ol class="profile-stepper" aria-label="Profile setup progress">
         <li><button type="button" data-profile-step-button="1" aria-current="step"><span>1</span>Goal</button></li>
@@ -1102,10 +1165,10 @@ function renderOnboarding(edit = false) {
           </label>
           <label class="option">
             <input type="radio" name="profileStorage" value="browser_and_backup" ${profileStorage === "browser_and_backup" ? "checked" : ""}>
-            <span><strong>This browser + backup file</strong><small>Also choose a file location on supported computers, or download it on mobile.</small></span>
+            <span><strong>This browser + portable backup</strong><small>Use a stable backup file in Downloads so another browser or in-app browser can restore the same data.</small></span>
           </label>
         </div>
-        <p class="notice">There is no account or cloud sync. Clearing this browser's site data removes the live copy. A backup file can be imported on another phone or computer.</p>
+        <p class="notice">There is no account or cloud sync. Telegram, WhatsApp and external browsers may each have separate local storage. A portable backup is the bridge between them.</p>
         </fieldset>
       </section>
 
@@ -1116,6 +1179,12 @@ function renderOnboarding(edit = false) {
         ${edit ? '<button id="cancelProfile" class="btn ghost" type="button">Cancel</button>' : ""}
       </div>
     </form>`;
+
+  const onboardingImport = $("#onboardingImportData");
+  if (onboardingImport) {
+    bindBackupImportInput(onboardingImport);
+    $("#restoreExistingProfile").onclick = () => startBackupRestore(onboardingImport);
+  }
 
   let activeProfileStep = 1;
 
@@ -3223,13 +3292,14 @@ function renderProfile() {
     </div>
     <div class="card">
       <h2>Where your data is saved</h2>
-      <p><strong>Live copy:</strong> This browser on ${deviceLabel}. It is not stored in an account or automatically synced to another device.</p>
+      <p><strong>Live copy:</strong> This browser on ${deviceLabel}. Telegram, WhatsApp and another browser may each keep a separate local copy.</p>
       ${backupStatusHtml(preferences)}
-      <p><strong>Export to this device:</strong> ${escapeHtml(exportLocationHelp())} The file is never saved to GitHub, the repository owner, an account or any server.</p>
-      <p>Import lets you select a previously exported JSON file and restore it in this browser after preview and confirmation.</p>
+      <p><strong>Portable backup:</strong> ${escapeHtml(exportLocationHelp())} The file is never saved to GitHub, the repository owner, an account or any server.</p>
+      <p>Use the same backup file to move your profile, programme, session and history between browser contexts. Import always previews the file before replacing the live copy.</p>
       <div class="actions">
-        <button id="exportData" class="btn">Export data file</button>
-        <label class="btn">Import data file<input id="importData" type="file" accept="application/json,.json" hidden></label>
+        <button id="exportData" class="btn">Export / update backup</button>
+        <button id="importDataButton" class="btn" type="button">Restore from backup</button>
+        <input id="importData" type="file" accept="application/json,.json" hidden>
         <button id="resetData" class="btn danger">Delete local data</button>
       </div>
     </div>
@@ -3309,35 +3379,8 @@ function renderProfile() {
       alert(`Could not export data: ${error.message}`);
     }
   };
-  $("#importData").onchange = async (event) => {
-    try {
-      const file = event.target.files[0];
-      if (!file) return;
-      const preview = await previewImportState(file);
-      const programmeState = preview.activeProgram
-        ? "an active programme"
-        : preview.draftProgram
-          ? "a saved draft recommendation"
-          : "no saved programme";
-      const accepted = confirm(
-        `Import backup for “${preview.profile?.name || "Unnamed profile"}”?\n\nIt contains ${preview.history.length} recorded workout${preview.history.length === 1 ? "" : "s"}, ${programmeState}, and ${preview.gym?.unavailableExerciseIds?.length || 0} unavailable gym item${preview.gym?.unavailableExerciseIds?.length === 1 ? "" : "s"}.\n\nThis will replace the live profile, programme, history and settings in this browser.`,
-      );
-      if (!accepted) {
-        event.target.value = "";
-        toast("Import cancelled. Live data was not changed.");
-        return;
-      }
-      state = preview;
-      saveState(state);
-      reconcileStoredProgramMetrics();
-      renderAll();
-      routeInitial();
-      toast("Backup imported after preview confirmation.");
-    } catch (error) {
-      alert(error.message);
-      event.target.value = "";
-    }
-  };
+  $("#importDataButton").onclick = () => startBackupRestore($("#importData"));
+  bindBackupImportInput($("#importData"));
   $("#resetData").onclick = () => {
     if (confirm("Delete the local profile, programme and history from this browser?")) {
       state = resetState();
