@@ -1,0 +1,54 @@
+name: One-off Agent OS live browser shadow
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/agent-os-live-browser-shadow-oneoff.yml
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned browser observation CLI
+        run: npm install --prefix "$RUNNER_TEMP/agent-os-cli" --no-audit --no-fund @playwright/cli@0.1.21
+      - name: Observe public deployment read only
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="https://dataraul.github.io"
+          target="$origin/Mobile-first-workout-recommendation-app/"
+          config="$RUNNER_TEMP/agent-os-browser-config.json"
+          session="$RUNNER_TEMP/agent-os-browser-session"
+          cli="$RUNNER_TEMP/agent-os-cli/node_modules/.bin/playwright-cli"
+          mkdir -p "$session"
+          cat > "$config" <<'JSON'
+          {
+            "browser": {"browserName": "chromium", "isolated": true, "launchOptions": {"channel": "chrome"}},
+            "outputMode": "stdout",
+            "network": {"allowedOrigins": ["https://dataraul.github.io"]},
+            "codegen": "none"
+          }
+          JSON
+          curl --fail --silent --show-error --location --max-time 20 "$target" -o "$RUNNER_TEMP/agent-os-live-page.html"
+          grep -F "Workout" "$RUNNER_TEMP/agent-os-live-page.html" >/dev/null
+          cd "$session"
+          trap '"$cli" close >/dev/null 2>&1 || true' EXIT
+          "$cli" open "$target" --config="$config" >/dev/null
+          "$cli" snapshot > "$RUNNER_TEMP/agent-os-snapshot.txt"
+          "$cli" find "Workout" > "$RUNNER_TEMP/agent-os-find.txt"
+          "$cli" console > "$RUNNER_TEMP/agent-os-console.txt"
+          "$cli" requests > "$RUNNER_TEMP/agent-os-requests.txt"
+          grep -F "Workout" "$RUNNER_TEMP/agent-os-snapshot.txt" >/dev/null
+          grep -F "Workout" "$RUNNER_TEMP/agent-os-find.txt" >/dev/null
+          grep -F "dataraul.github.io/Mobile-first-workout-recommendation-app/" "$RUNNER_TEMP/agent-os-requests.txt" >/dev/null
+          cd "$GITHUB_WORKSPACE"
+          test -z "$(git status --porcelain)"
+          echo "AGENT_OS_LIVE_BROWSER_SHADOW_OBSERVATION_PASS"
